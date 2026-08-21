@@ -47,20 +47,19 @@ keep no screen, so they can only hand back a bare prompt.`,
 		config := filepath.Join(root, "tmux.conf")
 
 		// Create the session detached first, then configure, then attach — three
-		// steps rather than one `new-session -A` because the chord has to be
-		// bound before a client is on the session, and there is no server to
-		// bind against until a session exists. `start-server` will not do: an
-		// empty server exits the moment it starts.
-		//
-		// -A here means an existing session is left alone rather than being an
-		// error, and its shell argument ignored, which is what makes reopening
-		// return the screen it had.
-		create := []string{"-f", config, "new-session", "-A", "-d", "-s", session}
-		create = append(create, scratch.ShellCommand(os.Getenv("SHELL"), root)...)
-		if out, err := tmuxCmd(create...).CombinedOutput(); err != nil {
-			slog.Error("could not create the scratch session",
-				"session", session, "err", err, "output", strings.TrimSpace(string(out)))
-			return fmt.Errorf("could not create the scratch session: %w", err)
+		// steps rather than one because the chord has to be bound before a
+		// client is on the session, and there is no server to bind against until
+		// a session exists. `start-server` will not do: an empty server exits
+		// the moment it starts.
+		exists := sessionExists(session)
+		slog.Debug("looked for the space's session", "session", session, "exists", exists)
+		if create := scratch.CreateArgs(exists, config, session, os.Getenv("SHELL"), root); create != nil {
+			if out, err := tmuxCmd(create...).CombinedOutput(); err != nil {
+				slog.Error("could not create the scratch session",
+					"session", session, "err", err, "output", strings.TrimSpace(string(out)))
+				return fmt.Errorf("could not create the scratch session: %w", err)
+			}
+			slog.Debug("created the scratch session", "session", session)
 		}
 
 		// -f above is read only when tmux has to start a server, so a server
@@ -92,7 +91,7 @@ keep no screen, so they can only hand back a bare prompt.`,
 		}
 		slog.Debug("bound the dismiss chord", "chord", dismissChord, "lead", lead, "key", key)
 
-		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", session}
+		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", scratch.Target(session)}
 
 		env := append(os.Environ(),
 			"HERDR_SCRATCH_POPUP=1",
@@ -112,6 +111,15 @@ keep no screen, so they can only hand back a bare prompt.`,
 			"tmux", tmuxPath, "err", err)
 		return err
 	},
+}
+
+// sessionExists reports whether the space's scratch session is already up, so
+// the popup knows whether there is anything to create.
+//
+// Only ever asked about existence, never about clients: attaching is this
+// command's own last act, and it is the only thing that ever attaches.
+func sessionExists(session string) bool {
+	return tmuxCmd("has-session", "-t", scratch.Target(session)).Run() == nil
 }
 
 // dismissTable is the one-key tmux key table the lead key switches into.

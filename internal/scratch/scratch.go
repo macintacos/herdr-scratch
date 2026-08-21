@@ -214,3 +214,30 @@ func TmuxKeyArg(key string) string {
 	}
 	return key
 }
+
+// CreateArgs is the tmux command that puts a space's scratch session in place,
+// or nil when it is already there and only wants attaching to.
+//
+// Deliberately not `new-session -A`: with -A, tmux turns new-session into
+// attach-session the moment the session exists, and attaching wants a terminal
+// on stdout. This runs with its output captured, so tmux refuses with "open
+// terminal failed: not a terminal" and the popup exits before reaching the
+// attach it was going to do anyway. Asking first costs one has-session call and
+// makes creating and attaching two separate things, which is what they are.
+func CreateArgs(exists bool, config, session, shell, root string) []string {
+	if exists {
+		return nil
+	}
+	create := []string{"-f", config, "new-session", "-d", "-s", session}
+	return append(create, ShellCommand(shell, root)...)
+}
+
+// Target spells a session name so tmux matches it and nothing else.
+//
+// tmux resolves a bare -t by exact name, then by prefix, then by pattern. Space
+// ids collide under that second rule: with spaces w1 and w12 both open, `-t w1`
+// can resolve to w12 — attaching one space to another space's shell, or reaping
+// it. The leading '=' asks for exact matching only.
+func Target(session string) string {
+	return "=" + session
+}

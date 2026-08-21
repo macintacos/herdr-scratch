@@ -27,7 +27,7 @@ what makes the session safe to name from the same reader the toggle uses.`,
 
 		// Not an error, and by far the common case: most spaces never open a
 		// scratch shell, and every one of them closes.
-		out, err := tmuxCmd("kill-session", "-t", session).CombinedOutput()
+		out, err := tmuxCmd("kill-session", "-t", scratch.Target(session)).CombinedOutput()
 		if err != nil {
 			slog.Debug("no scratch shell to reap", "session", session,
 				"output", strings.TrimSpace(string(out)))

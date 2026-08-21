@@ -241,3 +241,40 @@ func TestTmuxKeyArgLeavesOrdinaryKeysAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateArgsBuildsADetachedSessionWhenThereIsNone(t *testing.T) {
+	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root")
+	want := []string{"-f", "/root/tmux.conf", "new-session", "-d", "-s", "wD", "/bin/zsh"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("CreateArgs() = %q, want %q", got, want)
+	}
+}
+
+func TestCreateArgsNeverAsksTmuxToAttach(t *testing.T) {
+	// -A turns new-session into attach-session when the session exists, and
+	// attaching needs a terminal on stdout. This runs with its output captured,
+	// so tmux fails with "open terminal failed: not a terminal" and the popup
+	// dies before it ever gets to attach for real.
+	for _, arg := range CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root") {
+		if arg == "-A" {
+			t.Fatalf("CreateArgs() passed -A, which attaches when the session exists")
+		}
+	}
+}
+
+func TestCreateArgsRunsNothingWhenTheSessionIsAlreadyUp(t *testing.T) {
+	// The second press of the chord, and every one after it: the session is
+	// there and the only thing left to do is attach to it.
+	if got := CreateArgs(true, "/root/tmux.conf", "wD", "/bin/zsh", "/root"); got != nil {
+		t.Errorf("CreateArgs() = %q, want nil", got)
+	}
+}
+
+func TestTargetAsksTmuxForAnExactSessionName(t *testing.T) {
+	// A bare -t is a prefix match, so with spaces w1 and w12 open, targeting w1
+	// can land on w12's session — attaching to the wrong space's shell, or
+	// reaping it. tmux's '=' asks for the session actually named this.
+	if got := Target("w1"); got != "=w1" {
+		t.Errorf("Target() = %q, want %q", got, "=w1")
+	}
+}

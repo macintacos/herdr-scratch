@@ -34,7 +34,7 @@ socket client of its own.`,
 
 		if sessionAttached(session) {
 			slog.Info("closing: session is attached, detaching its client", "session", session)
-			err := tmuxCmd("detach-client", "-s", session).Run()
+			err := tmuxCmd("detach-client", "-s", scratch.Target(session)).Run()
 			if err != nil {
 				slog.Error("detach failed", "session", session, "err", err)
 			}
@@ -71,7 +71,7 @@ socket client of its own.`,
 // attached — which is exactly when its popup is on screen. A missing server or
 // session reports false, so the next press opens one.
 func sessionAttached(session string) bool {
-	out, err := tmuxCmd("display-message", "-p", "-t", session, "#{session_attached}").Output()
+	out, err := tmuxCmd("display-message", "-p", "-t", scratch.Target(session), "#{session_attached}").Output()
 	if err != nil {
 		// Expected the first time a pane is used, and after a reboot. Logged
 		// anyway: told apart from "exists but detached", it is the difference
