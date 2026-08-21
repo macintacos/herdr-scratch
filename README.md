@@ -196,6 +196,9 @@ the copy in force; a Homebrew install puts it at
 leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
 release's version of it instead, `herdr-scratch link --force`.
 
+Nothing needs reloading after an edit. herdr re-reads the manifest every time it runs one
+of the plugin's commands, so the next popup you open is already using it.
+
 **The dismiss chord** — the `--dismiss` argument on the pane command, in tmux's key
 syntax. It has to name the same chord that *opens* the popup, and the default assumes
 herdr's default prefix with the binding above:
@@ -208,6 +211,10 @@ If your herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something o
 <kbd>'</kbd>, change this to match — `"C-a ;"` for <kbd>Ctrl</kbd> + <kbd>A</kbd> then
 <kbd>;</kbd>. Nothing can work it out for you: herdr has no way to report its prefix, and
 the popup has to be told before it opens.
+
+The new chord works on the next open. The old one keeps working alongside it until the
+scratch tmux server exits, since tmux holds the binding rather than this plugin — end it
+with `tmux -L herdr-scratch kill-server` if that bothers you.
 
 **Size** — `width` and `height`. Terminal cells as numbers, or a
 percentage string like `"70%"`. Omit both for herdr's default half-size popup.
