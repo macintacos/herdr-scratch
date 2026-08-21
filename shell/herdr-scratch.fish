@@ -28,9 +28,16 @@ bind -M default q "commandline -r herdr-scratch-dismiss; commandline -f execute"
 # reports 0 attached clients exactly when the popup is closed, so a popup you
 # are watching stays quiet.
 function __herdr_scratch_notify --on-event fish_postexec
-    # Read at call time, not load time, so setting it anywhere in your config
-    # takes effect.
+    # Lowest precedence first. HERDR_SCRATCH_NOTIFY_AFTER carries notify_after
+    # from config.toml: the popup puts it on the tmux session, so every shell in
+    # the space shares one threshold without any of them reading the file. The
+    # fish variable is set last and so wins, which leaves a
+    # herdr_scratch_notify_after somebody already has doing what it always did.
+    #
+    # Both read at call time, not load time, so setting either anywhere in your
+    # config takes effect.
     set -l after 10000
+    set -q HERDR_SCRATCH_NOTIFY_AFTER; and set after $HERDR_SCRATCH_NOTIFY_AFTER
     set -q herdr_scratch_notify_after; and set after $herdr_scratch_notify_after
 
     test "$CMD_DURATION" -ge "$after"; or return
