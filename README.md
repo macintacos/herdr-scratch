@@ -17,25 +17,15 @@ prefix + '     →  same shell, same output, same scroll position
 
 macOS and Linux. Not Windows — it depends on tmux.
 
-## Requirements
-
-`brew install` brings every one of these. They are listed for anyone installing another way.
-
-| | |
-| --- | --- |
-| **herdr** | 0.8.0+ (`herdr --version`). Earlier versions have no `plugin pane` command |
-| **tmux** | `apt install tmux`. It is what keeps the shell alive *and* the screen intact |
-| **Go** | 1.24+, and only to build. Nothing needs it once the binary exists |
-
 ## Install
 
 ```sh
 brew install macintacos/tap/herdr-scratch
-herdr plugin link "$(brew --prefix herdr-scratch)/libexec"
+herdr plugin link "$(brew --prefix herdr-scratch)"
 ```
 
-The formula pulls herdr and tmux, takes Go as a build-only dependency, compiles the binary
-and lays the plugin out under `libexec`.
+The formula brings herdr and tmux with it, and Go to build with, so there is nothing to
+install first.
 
 The second line is the one thing it cannot do for you. herdr has no plugin search path — it
 learns about a plugin from `install` or `link` and nothing else — and a formula must not
@@ -47,13 +37,16 @@ write outside Homebrew's prefix. `brew` reprints the command after every install
 
 ### Without Homebrew
 
+You supply the dependencies yourself: herdr 0.8.0+ (`herdr --version` — earlier versions
+have no `plugin pane` command), tmux, and Go 1.24+ to build with.
+
 ```sh
 herdr plugin install macintacos/herdr-scratch
 ```
 
-That compiles the binary for you, so it needs Go on your PATH. herdr runs build commands
-during a GitHub install — after confirmation, before it registers the plugin — so a failed
-build leaves nothing half-installed.
+That compiles the binary for you. herdr runs build commands during a GitHub install — after
+confirmation, before it registers the plugin — so a failed build leaves nothing
+half-installed.
 
 Prefer to manage the checkout yourself? `herdr plugin link` deliberately leaves a local
 directory alone, which means it does **not** build. Do that once yourself:
@@ -236,7 +229,7 @@ If you linked a local checkout, `herdr plugin link` does not build — run
 
 **It stopped working right after `brew upgrade`.** `herdr plugin list` will be pointing at a
 `Cellar/herdr-scratch/<old version>` path that the upgrade removed. Re-run
-`herdr plugin link "$(brew --prefix herdr-scratch)/libexec"`.
+`herdr plugin link "$(brew --prefix herdr-scratch)"`.
 
 **The chord opens the popup but will not close it.** Check `HERDR_SCRATCH_ROOT` is set
 inside the popup. If it is unset, this shell was not started by the plugin.
