@@ -1,0 +1,55 @@
+#!/bin/sh
+# Open the scratch popup, or close the one that is open.
+#
+# Works from either kind of herdr keybinding, because the two hand a script its
+# context differently:
+#
+#   type = "plugin_action"  the recommended binding. No paths in your config,
+#                           so it works wherever the plugin is installed. herdr
+#                           supplies HERDR_PLUGIN_CONTEXT_JSON.
+#   type = "shell"          for a locally linked checkout, if you would rather
+#                           point at the script directly. herdr supplies
+#                           HERDR_ACTIVE_PANE_CWD and HERDR_ACTIVE_PANE_ID.
+#
+# It has to be one of those two rather than `type = "popup"`, because a popup
+# keybinding can only ever open one — press it again and herdr answers "popup
+# already open", which is why such a binding never toggles.
+#
+# Closing does not end the shell. The popup runs a tmux client, so herdr kills
+# the client and the session it was attached to keeps running. The next press
+# re-attaches, and tmux repaints the screen exactly as it was left.
+set -eu
+
+# Pull one flat string field out of herdr's context JSON. herdr controls the
+# shape and it has no nesting, so this stays a one-liner rather than a JSON
+# dependency; a path containing a literal double quote would defeat it.
+json_field() {
+    printf '%s' "${HERDR_PLUGIN_CONTEXT_JSON:-}" \
+        | sed -n 's/.*"'"$1"'":"\([^"]*\)".*/\1/p'
+}
+
+pane_cwd=${HERDR_ACTIVE_PANE_CWD:-$(json_field focused_pane_cwd)}
+pane_id=${HERDR_ACTIVE_PANE_ID:-$(json_field focused_pane_id)}
+
+# popup.close answers popup_not_open when there is none. Anything else means a
+# popup was open and has now been closed, and that was the whole keypress.
+if ! printf '{"id":"herdr-scratch","method":"popup.close","params":{}}\n' \
+    | nc -U "${HERDR_SOCKET_PATH:?not running inside herdr}" \
+    | grep -q popup_not_open; then
+    exit 0
+fi
+
+# tmux reads a dot or a colon in a session name as a window/pane separator, and
+# herdr's pane ids contain colons.
+session=$(printf '%s' "${pane_id:-default}" | tr ':.' '--')
+
+# An action runs with the plugin directory as its working directory, so this
+# resolves the plugin root for both entry points.
+root=${HERDR_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+
+exec "${HERDR_BIN_PATH:-herdr}" plugin pane open \
+    --plugin user.scratch \
+    --entrypoint scratch \
+    --cwd "${pane_cwd:-$HOME}" \
+    --env "HERDR_SCRATCH_SESSION=$session" \
+    --env "HERDR_SCRATCH_ROOT=$root"

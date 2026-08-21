@@ -1,0 +1,15 @@
+#!/bin/sh
+# Close the scratch popup from inside it, leaving the shell running.
+#
+# A herdr popup "receives all terminal input, including Escape, until its
+# command exits", so no herdr keybinding reaches one — whatever runs inside is
+# the only thing positioned to close it. This is what the shell integration
+# binds to a key; see shell/ for the fish version.
+#
+# herdr exposes no CLI for popup.close, so this speaks the socket API directly.
+# nc is the only dependency; on Linux that means the OpenBSD netcat, which is
+# what provides -U.
+set -eu
+
+printf '{"id":"herdr-scratch","method":"popup.close","params":{}}\n' \
+    | nc -U "${HERDR_SOCKET_PATH:?not inside herdr}" >/dev/null 2>&1
