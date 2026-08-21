@@ -4,17 +4,12 @@ A scratch shell for [herdr](https://herdr.dev), in a popup you toggle with one c
 
 ![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/scratch-popup.png)
 
-Press it and a shell opens over whatever you were doing, in that pane's directory.
-Every pane in the space shares it, so it is there wherever you move to.
-Press it again and the popup goes away — but the shell does not. Start a dev server,
-put the popup away, bring it back an hour later and it is still running, with the
-scrollback exactly where you left it.
-
-```
-prefix + '     →  scratch shell opens, 70% of the screen, cwd of the pane you were in
-prefix + '     →  popup closes; whatever is running keeps running
-prefix + '     →  same shell, same output, same scroll position
-```
+Press <kbd>prefix</kbd> + <kbd>'</kbd> and a shell opens over whatever you were doing,
+starting in that pane's directory. Every other pane in the same space — herdr's word for a
+workspace, the tabs and panes grouped under one — reaches that same shell from then on, so
+it is there wherever you move to. Press it again and the popup goes away, but the shell
+does not: start a dev server, put the popup away, bring it back an hour later and it is
+still running, with the scrollback exactly where you left it.
 
 macOS and Linux. Not Windows — it depends on tmux.
 
@@ -28,8 +23,13 @@ herdr-scratch link
 The formula brings herdr and tmux with it, and Go to build with, so there is nothing to
 install first.
 
-`link` runs once. Upgrades need nothing — `brew upgrade herdr-scratch` and the plugin is
-already the new one.
+`link` is the only registration you ever do — `brew upgrade herdr-scratch` picks up the
+new build without it.
+
+> [!NOTE]
+> Upgrading pulls herdr up with it, since the formula depends on herdr, and a herdr server
+> already running will not match the CLI it was just upgraded past. Restart herdr
+> afterwards, or run `brew reinstall herdr-scratch` to leave your dependencies alone.
 
 <details>
 <summary>Why registering is a command at all, rather than something the formula does</summary>
@@ -86,98 +86,71 @@ description = "scratch shell"
 
 Then `herdr server reload-config` (start herdr first if it is not running).
 
-`prefix` means whatever your herdr prefix key already is — `ctrl+b` unless you changed it.
-Use any key you like in place of `'` — but if you do, tell the popup, or it will not answer
-the chord you actually press. See **The dismiss chord** under Configuring.
+`prefix` means whatever your herdr prefix key already is — <kbd>Ctrl</kbd> + <kbd>B</kbd>
+unless you changed it. This names an **action**, not a path, so it keeps working wherever
+herdr put the plugin. A binding of `type = "popup"` will not do here: it can only ever
+*open* one, so pressing it again gets you "popup already open" rather than a toggle.
 
-This names an **action**, not a path, so it keeps working wherever herdr put the plugin.
+> [!IMPORTANT]
+> Use any key you like in place of <kbd>'</kbd> — but tell the popup too, or it will not
+> answer the chord you actually press. See [The dismiss chord](#configuring).
 
-What you cannot use is `type = "popup"`. A popup binding can only ever *open* one — press
-it again and herdr answers "popup already open", so it never toggles.
-
-**That is the whole setup.** You do not touch your shell config: the popup starts the
-shell, so it loads its own key bindings.
-
-## Using it
-
-Inside the scratch popup:
-
-| key | mode | what it does |
-| --- | --- | --- |
-| `q` | vi normal mode | writes out `herdr-scratch-dismiss` and runs it |
-| `ctrl+b` `'` | any shell, even mid-command | dismisses immediately, no prompt needed |
-
-`q` is for when you are sitting at a prompt. The chord is for when something is running and
-there is no prompt to type at — it is the same chord that opened the popup, so it matches
-the muscle memory, just answered by tmux instead of herdr.
-
-**Why the popup needs its own keys at all.** A herdr popup, per the herdr docs, "receives
-all terminal input, including Escape, until its command exits." Your prefix key does not
-reach herdr while a popup is up. So the chord opens the popup but cannot close it — only
-something running *inside* it can.
-
-**And why the chord is tmux's and not the shell's.** A shell reads keys only in its line
-editor. Start a dev server and fish stops reading them, so a binding there cannot fire —
-the chord is echoed into the server's output instead. tmux sees every keypress before the
-program in the pane does, which makes it the one layer that can answer while something is
-running. `q` stays a fish binding because a prompt is the only place it makes sense.
-
-### Shells other than fish
-
-**The chord needs nothing from your shell.** It is a tmux binding, so it works the same in
-bash, zsh, nu or anything else the popup starts — including while a command is running,
-which is the case no shell binding can cover.
-
-What is fish-only is the rest: the bare `q`, and the finish notifications. Both are loaded
-through `fish --init-command`, which is why fish costs you no shell config. bash and zsh
-have no equivalent that avoids displacing your own rc file, so they are left alone.
-
-`q` relies on fish's vi mode having a distinct command mode to bind into. In zsh you could
-get close, guarded so it only binds inside a popup:
-
-```zsh
-if [[ -n ${HERDR_SCRATCH_ROOT:-} ]]; then
-    herdr-scratch-dismiss() { "$HERDR_SCRATCH_ROOT/bin/herdr-scratch" dismiss }
-    zle -N herdr-scratch-dismiss
-    bindkey -M vicmd q herdr-scratch-dismiss
-fi
-```
-
-The notification hook has no portable equivalent at all, since it hangs off
-`fish_postexec`.
-
-**If you use fish's vi mode elsewhere, note the mode name.** Bindings go on `-M default`,
-because `default` is what fish calls vi's normal mode. `bind -M normal …` is accepted
-without error and then never fires, because it creates a mode fish never enters.
+**That is the whole setup.** You never touch your shell config — the popup starts your
+login shell, whatever `$SHELL` is, and the dismiss chord is tmux's rather than the
+shell's, so it answers in any of them.
 
 ## Check it works
 
-1. `<prefix>'` → a bordered popup titled **scratch** opens, in the pane's directory.
+1. <kbd>prefix</kbd> + <kbd>'</kbd> → a bordered popup titled **scratch** opens, in the
+   pane's directory.
 2. Run something long: `while true; do echo tick; sleep 1; done`
-3. `<prefix>'` → popup closes.
-4. `<prefix>'` → same popup, ticks still counting, scrollback intact.
-5. Close it, move to another pane in the same space, `<prefix>'` → still the same shell,
-   still ticking. Do the same in a pane in a *different* space and you get a new one.
+3. <kbd>prefix</kbd> + <kbd>'</kbd> → popup closes.
+4. <kbd>prefix</kbd> + <kbd>'</kbd> → same popup, ticks still counting, scrollback intact.
+5. Close it, move to another pane in the same space and press it again → still the same
+   shell, still ticking. Do the same in a pane in a *different* space and you get a new
+   one.
 
-If step 4 gives you a blank screen or a fresh prompt, see Troubleshooting.
+If step 4 gives you a blank screen or a fresh prompt, see [Troubleshooting](#troubleshooting).
+
+## Using it
+
+A popup takes every keypress until it exits, so your herdr prefix cannot reach herdr while
+one is up. The popup brings its own two keys instead:
+
+| key | mode | what it does |
+| --- | --- | --- |
+| <kbd>Q</kbd> | vi normal mode, fish only | types out the dismiss command and runs it, so the scrollback says what happened |
+| <kbd>prefix</kbd> + <kbd>'</kbd> | any shell, even mid-command | dismisses immediately, no prompt needed |
+
+<kbd>Q</kbd> is for when you are sitting at a prompt. The chord is for when something is
+running and there is no prompt to type at — it is the same chord that opened the popup, so
+it matches the muscle memory.
+
+### Shells other than fish
+
+> [!NOTE]
+> The chord needs nothing from your shell. It is a tmux binding, so it works the same in
+> bash, zsh, nu or anything else the popup starts — including while a command is running,
+> which is the case no shell binding can cover.
+
+What is fish-only is the rest: the bare <kbd>Q</kbd>, and the finish notifications. Both
+are loaded through `fish --init-command`, which is why fish costs you no shell config. bash
+and zsh have no equivalent that avoids displacing your own rc file, so they are left
+alone.
 
 ## How it works
 
 Three pieces, each solving one problem herdr leaves open.
 
-**A plugin pane, not a popup keybinding.** Only a plugin pane carries a title, so the
-border reads `scratch` rather than the literal `popup`. And because the binding invokes an
-action, it can decide between opening and closing — which is what makes one chord toggle.
+**A plugin pane, not a `type = "popup"` keybinding.** Only a plugin pane carries a title,
+so the border reads `scratch` rather than the literal `popup`. And because the binding
+invokes an action, it can decide between opening and closing — which is what makes one
+chord toggle.
 
 **A tmux session per space.** This is what survives the close. Dismissing detaches the tmux
 client, and that client is the process herdr spawned — so herdr tears the popup down on its
 own, while the session and everything in it carry on. Reopening attaches a new client, and
 tmux repaints the screen it kept.
-
-It has to be tmux, or something else that emulates a terminal. abduco and dtach are smaller
-and hold a process open just fine, but they only pipe bytes — they keep no screen, so
-reattaching gives you a bare prompt and the previous output is gone. If you only need "the
-process survives", they are enough. For "it comes back exactly as I left it", they are not.
 
 The session is keyed on herdr's space, so every pane in a space reaches the same scratch
 shell. Open it in one pane, put it away, move two panes over and press the chord: the same
@@ -205,12 +178,6 @@ herdr posts it, which is what makes it wear **your terminal's icon and name**, w
 that focuses the terminal. It also means delivery follows your herdr config — a desktop
 notification, an in-app toast, or off entirely — instead of this plugin deciding for you.
 
-> A notifier binary cannot do this. macOS binds a notification to the bundle that actually
-> posts it, so with terminal-notifier the sender stays terminal-notifier: `-sender` needs a
-> private API macOS no longer honours and renders nothing at all, `-appIcon` is accepted and
-> ignored, and `-contentImage` only pins a thumbnail beside a notification still labelled
-> terminal-notifier.
-
 Most terminals suppress desktop notifications while they are focused, so expect these when
 you are in another app — which is when they are worth having.
 
@@ -223,25 +190,27 @@ set -g herdr_scratch_notify_after 30000   # 30 seconds
 
 ## Configuring
 
-**The dismiss chord** — `--dismiss` on the pane command in `herdr-plugin.toml`, in tmux's
-key syntax. It has to name the same chord that *opens* the popup, and the default assumes
+The first two live in `herdr-plugin.toml`. `herdr plugin list` prints the directory holding
+the copy in force; a Homebrew install puts it at
+`~/.local/share/herdr-scratch/herdr-plugin.toml`. That copy is yours — `herdr-scratch link`
+leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
+release's version of it instead, `herdr-scratch link --force`.
+
+**The dismiss chord** — the `--dismiss` argument on the pane command, in tmux's key
+syntax. It has to name the same chord that *opens* the popup, and the default assumes
 herdr's default prefix with the binding above:
 
 ```toml
 command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
 ```
 
-If your herdr prefix is `ctrl+a`, or you bound something other than `'`, change this to
-match — `"C-a ;"` for `ctrl+a` then semicolon. Nothing can work it out for you: herdr has
-no way to report its prefix, and the popup has to be told before it opens.
+If your herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something other than
+<kbd>'</kbd>, change this to match — `"C-a ;"` for <kbd>Ctrl</kbd> + <kbd>A</kbd> then
+<kbd>;</kbd>. Nothing can work it out for you: herdr has no way to report its prefix, and
+the popup has to be told before it opens.
 
-**Size** — `width` and `height` in `herdr-plugin.toml`. Terminal cells as numbers, or a
+**Size** — `width` and `height`. Terminal cells as numbers, or a
 percentage string like `"70%"`. Omit both for herdr's default half-size popup.
-
-`herdr plugin list` prints the copy in force. If you installed with brew that is
-`~/.local/share/herdr-scratch/herdr-plugin.toml`, and it is yours: `herdr-scratch link`
-leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
-release's version of it instead, `herdr-scratch link --force`.
 
 **Sessions** — `tmux -L herdr-scratch ls` lists them, one per space you have used it in.
 
@@ -265,6 +234,10 @@ Then delete the `[[keys.command]]` block from `config.toml` and `herdr server re
 
 ## Troubleshooting
 
+> [!TIP]
+> `herdr-scratch --version` reports the build herdr is actually loading. Worth checking
+> first when the behaviour here does not match what you see.
+
 **The popup opens and closes immediately.** tmux failed to start, or the binary is missing.
 If you linked a local checkout, `herdr plugin link` does not build — run
 `go build -o bin/herdr-scratch .` in the plugin directory.
@@ -273,8 +246,10 @@ If you linked a local checkout, `herdr plugin link` does not build — run
 the Homebrew prefix directly, which pins it to a version an upgrade will delete. Run
 `herdr-scratch link` to move the registration somewhere that survives.
 
-**The chord opens the popup but will not close it.** Check `HERDR_SCRATCH_ROOT` is set
-inside the popup. If it is unset, this shell was not started by the plugin.
+**The chord opens the popup but will not close it.** Almost always the dismiss chord not
+matching the one you press — see [The dismiss chord](#configuring). If
+`echo $HERDR_SCRATCH_ROOT` inside the popup comes back empty, it is something else: that
+shell was not started by the plugin, so close it and open a fresh popup.
 
 **Nothing at all happens when you press it.** Read the log — every subcommand writes one,
 because a keybinding's stderr goes to herdr and a popup's is inside a popup that is closing:
@@ -283,10 +258,10 @@ because a keybinding's stderr goes to herdr and a popup's is inside a popup that
 tail -f ~/.local/state/herdr-scratch/herdr-scratch.log
 ```
 
-Lines by default, JSON with `--debug`, which also turns on the debug records — the pane the
-chord fired from, what tmux said about its session, and the exact `herdr plugin pane open`
-that followed. To capture a press that way, put `--debug` in the action's command in
-`herdr-plugin.toml`:
+Readable lines by default, JSON with `--debug`, which also turns on the debug records —
+the space the chord fired from, what tmux said about its session, and the exact
+`herdr plugin pane open` that followed. To capture a press that way, put `--debug` in the
+action's command in `herdr-plugin.toml`:
 
 ```toml
 command = ["./bin/herdr-scratch", "--debug", "toggle"]
@@ -295,8 +270,9 @@ command = ["./bin/herdr-scratch", "--debug", "toggle"]
 Nothing rotates the file. It gets a few lines per press, so it is a long while before that
 matters; `rm` it when it does.
 
-**`q` does nothing in normal mode.** Almost always a `bind -M normal` somewhere in your own
-config, which never fires. Use `-M default`.
+**<kbd>Q</kbd> does nothing in normal mode.** Almost always a `bind -M normal` somewhere in
+your own config, which never fires — `default` is what fish calls vi's normal mode, and
+`normal` names a mode fish never enters. Use `-M default`.
 
 **Reopening gives a blank screen or a fresh prompt.** Whatever is running the session is not
 tmux. Check the `command` in `herdr-plugin.toml`.
@@ -304,14 +280,19 @@ tmux. Check the `command` in `herdr-plugin.toml`.
 ## Development
 
 ```sh
-go build -o bin/herdr-scratch .   # the [[build]] command, by hand
+go build -o bin/herdr-scratch .   # what `herdr plugin install` runs for you
 go test ./...                     # the decision logic in internal/scratch
 herdr plugin link "$PWD"          # point herdr at this checkout
 ```
 
-`internal/scratch` holds the choices worth testing — session naming, resolving which pane a
-binding fired from, which shell argv to launch, how the notification is assembled — kept
-apart from the processes `cmd/` runs so they can be exercised directly.
+> [!WARNING]
+> herdr registers one copy of a plugin, so linking a checkout replaces whatever was
+> registered before. A Homebrew install stops being the one herdr loads until you run
+> `herdr-scratch link` again.
+
+`internal/scratch` holds the choices worth testing — which space a binding fired from,
+where a new shell should start, which shell argv to launch, how the notification is
+assembled — kept apart from the processes `cmd/` runs so they can be exercised directly.
 
 ## License
 
