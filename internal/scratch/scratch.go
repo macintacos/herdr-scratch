@@ -5,6 +5,7 @@ package scratch
 import (
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -231,7 +232,11 @@ func TmuxKeyArg(key string) string {
 // terminal failed: not a terminal" and the popup exits before reaching the
 // attach it was going to do anyway. Asking first costs one has-session call and
 // makes creating and attaching two separate things, which is what they are.
-func CreateArgs(exists bool, config, session, shell, root string) []string {
+// notifyAfter rides along for the same reason the other two do: the shell
+// integration compares it after every command, and asking the binary for it
+// each time would spawn a process per prompt. The cost is that changing it in
+// config.toml reaches the next session rather than the next popup.
+func CreateArgs(exists bool, config, session, shell, root string, notifyAfter int) []string {
 	if exists {
 		return nil
 	}
@@ -247,6 +252,7 @@ func CreateArgs(exists bool, config, session, shell, root string) []string {
 		// first space's values for every space after.
 		"-e", "HERDR_SCRATCH_POPUP=1",
 		"-e", "HERDR_SCRATCH_ROOT=" + root,
+		"-e", "HERDR_SCRATCH_NOTIFY_AFTER=" + strconv.Itoa(notifyAfter),
 	}
 	return append(create, ShellCommand(shell, root)...)
 }

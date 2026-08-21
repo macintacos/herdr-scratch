@@ -39,9 +39,12 @@ keep no screen, so they can only hand back a bare prompt.`,
 			return fmt.Errorf("tmux is required but is not on PATH")
 		}
 
-		lead, key, ok := scratch.DismissKeys(dismissChord)
+		cfg := userConfig()
+		chord := dismissFrom(cmd, cfg)
+
+		lead, key, ok := scratch.DismissKeys(chord)
 		if !ok {
-			return fmt.Errorf("--dismiss wants two tmux keys, like %q, got %q", "C-b '", dismissChord)
+			return fmt.Errorf("the dismiss chord wants two tmux keys, like %q, got %q", "C-b '", chord)
 		}
 
 		config := filepath.Join(root, "tmux.conf")
@@ -53,7 +56,7 @@ keep no screen, so they can only hand back a bare prompt.`,
 		// the moment it starts.
 		exists := sessionExists(session)
 		slog.Debug("looked for the space's session", "session", session, "exists", exists)
-		if create := scratch.CreateArgs(exists, config, session, os.Getenv("SHELL"), root); create != nil {
+		if create := scratch.CreateArgs(exists, config, session, os.Getenv("SHELL"), root, cfg.NotifyAfter); create != nil {
 			if out, err := tmuxCmd(create...).CombinedOutput(); err != nil {
 				slog.Error("could not create the scratch session",
 					"session", session, "err", err, "output", strings.TrimSpace(string(out)))
@@ -85,11 +88,11 @@ keep no screen, so they can only hand back a bare prompt.`,
 			{"bind-key", "-T", dismissTable, leadArg, "send-keys", leadArg},
 		} {
 			if out, err := tmuxCmd(bind...).CombinedOutput(); err != nil {
-				slog.Error("could not bind the dismiss chord", "chord", dismissChord,
+				slog.Error("could not bind the dismiss chord", "chord", chord,
 					"bind", bind, "err", err, "output", strings.TrimSpace(string(out)))
 			}
 		}
-		slog.Debug("bound the dismiss chord", "chord", dismissChord, "lead", lead, "key", key)
+		slog.Debug("bound the dismiss chord", "chord", chord, "lead", lead, "key", key)
 
 		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", scratch.Target(session)}
 
@@ -120,12 +123,29 @@ func sessionExists(session string) bool {
 // dismissTable is the one-key tmux key table the lead key switches into.
 const dismissTable = "scratch"
 
-// dismissChord defaults to herdr's own default prefix and the binding the README
-// suggests, so the common setup needs no argument at all.
+// dismissChord holds --dismiss, which the shipped manifest no longer passes.
 var dismissChord string
 
+// dismissFrom picks the chord to bind: the flag when it was actually given,
+// then the config file, then the built-in default.
+//
+// Changed() rather than a non-empty check is what keeps the order honest. The
+// flag has to lose to the config file in the ordinary case — otherwise a
+// manifest that passes --dismiss would beat the file every time, which is the
+// coupling this move exists to break — while a manifest somebody hand-edited
+// before the move keeps working, chord and all.
+func dismissFrom(cmd *cobra.Command, cfg scratch.Config) string {
+	if cmd.Flags().Changed("dismiss") {
+		return dismissChord
+	}
+	if cfg.Dismiss != "" {
+		return cfg.Dismiss
+	}
+	return scratch.DefaultConfig().Dismiss
+}
+
 func init() {
-	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "C-b '",
-		"the two tmux keys that close the popup, matching the chord that opens it")
+	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "",
+		"the two tmux keys that close the popup; overrides dismiss in config.toml")
 	rootCmd.AddCommand(popupCmd)
 }

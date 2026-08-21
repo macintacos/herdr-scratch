@@ -248,11 +248,12 @@ func TestCreateArgsBuildsADetachedSessionWhenThereIsNone(t *testing.T) {
 	// these around the attach reaches the client and nothing else, so the shell
 	// integration, which does nothing unless it sees HERDR_SCRATCH_POPUP, would
 	// never load.
-	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root")
+	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 2000)
 	want := []string{
 		"-f", "/root/tmux.conf", "new-session", "-d", "-s", "wD",
 		"-e", "HERDR_SCRATCH_POPUP=1",
 		"-e", "HERDR_SCRATCH_ROOT=/root",
+		"-e", "HERDR_SCRATCH_NOTIFY_AFTER=2000",
 		"/bin/zsh",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -265,7 +266,7 @@ func TestCreateArgsNeverAsksTmuxToAttach(t *testing.T) {
 	// attaching needs a terminal on stdout. This runs with its output captured,
 	// so tmux fails with "open terminal failed: not a terminal" and the popup
 	// dies before it ever gets to attach for real.
-	for _, arg := range CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root") {
+	for _, arg := range CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 10000) {
 		if arg == "-A" {
 			t.Fatalf("CreateArgs() passed -A, which attaches when the session exists")
 		}
@@ -275,7 +276,7 @@ func TestCreateArgsNeverAsksTmuxToAttach(t *testing.T) {
 func TestCreateArgsRunsNothingWhenTheSessionIsAlreadyUp(t *testing.T) {
 	// The second press of the chord, and every one after it: the session is
 	// there and the only thing left to do is attach to it.
-	if got := CreateArgs(true, "/root/tmux.conf", "wD", "/bin/zsh", "/root"); got != nil {
+	if got := CreateArgs(true, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 10000); got != nil {
 		t.Errorf("CreateArgs() = %q, want nil", got)
 	}
 }

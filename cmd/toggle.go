@@ -51,6 +51,10 @@ socket client of its own.`,
 			"--cwd", paneCwd,
 			"--env", "HERDR_SCRATCH_SESSION="+session,
 		)
+		// Only when the config sets one. Sending nothing leaves herdr to apply
+		// the size the manifest declares, which is where the shipped default
+		// lives — so a user who never set a size sees no change at all.
+		open.Args = append(open.Args, sizeArgs(userConfig())...)
 		slog.Info("opening: no attached session, asking herdr for the pane",
 			"session", session, "cwd", paneCwd, "argv", open.Args)
 
@@ -85,6 +89,19 @@ func sessionAttached(session string) bool {
 		"session", session, "attached_clients", clients, "attached", attached,
 		"exists", clients != "")
 	return attached
+}
+
+// sizeArgs spells whichever popup dimensions the user set as flags for
+// `herdr plugin pane open`.
+func sizeArgs(cfg scratch.Config) []string {
+	var args []string
+	if cfg.Width != "" {
+		args = append(args, "--width", cfg.Width)
+	}
+	if cfg.Height != "" {
+		args = append(args, "--height", cfg.Height)
+	}
+	return args
 }
 
 func init() { rootCmd.AddCommand(toggleCmd) }
