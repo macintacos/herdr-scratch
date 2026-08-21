@@ -19,21 +19,41 @@ macOS and Linux. Not Windows — it depends on tmux.
 
 ## Requirements
 
+`brew install` brings every one of these. They are listed for anyone installing another way.
+
 | | |
 | --- | --- |
 | **herdr** | 0.8.0+ (`herdr --version`). Earlier versions have no `plugin pane` command |
-| **tmux** | `brew install tmux` / `apt install tmux`. It is what keeps the shell alive *and* the screen intact |
-| **Go** | 1.21+, to compile the plugin binary at install time |
+| **tmux** | `apt install tmux`. It is what keeps the shell alive *and* the screen intact |
+| **Go** | 1.24+, and only to build. Nothing needs it once the binary exists |
 
 ## Install
+
+```sh
+brew install macintacos/tap/herdr-scratch
+herdr plugin link "$(brew --prefix herdr-scratch)/libexec"
+```
+
+The formula pulls herdr and tmux, takes Go as a build-only dependency, compiles the binary
+and lays the plugin out under `libexec`.
+
+The second line is the one thing it cannot do for you. herdr has no plugin search path — it
+learns about a plugin from `install` or `link` and nothing else — and a formula must not
+write outside Homebrew's prefix. `brew` reprints the command after every install.
+
+> **Run it again after `brew upgrade herdr-scratch`.** herdr resolves the path it is given
+> down to the real directory, and that one is version-numbered, so an upgrade leaves the
+> registration pointing at a version that no longer exists.
+
+### Without Homebrew
 
 ```sh
 herdr plugin install macintacos/herdr-scratch
 ```
 
-That compiles the binary for you. herdr runs build commands during a GitHub install —
-after confirmation, before it registers the plugin — so a failed build leaves nothing
-half-installed.
+That compiles the binary for you, so it needs Go on your PATH. herdr runs build commands
+during a GitHub install — after confirmation, before it registers the plugin — so a failed
+build leaves nothing half-installed.
 
 Prefer to manage the checkout yourself? `herdr plugin link` deliberately leaves a local
 directory alone, which means it does **not** build. Do that once yourself:
@@ -44,7 +64,7 @@ cd ~/.config/herdr/scratch && go build -o bin/herdr-scratch .
 herdr plugin link ~/.config/herdr/scratch
 ```
 
-Installing does not bind anything. One step remains.
+Installing does not bind anything, however you did it. One step remains.
 
 ### Bind a key
 
@@ -202,7 +222,8 @@ in scratch shells, check that list now and then.
 
 ```sh
 tmux -L herdr-scratch kill-server     # stop every scratch shell
-herdr plugin uninstall user.scratch   # or: herdr plugin unlink user.scratch
+herdr plugin unlink user.scratch      # or: herdr plugin uninstall user.scratch
+brew uninstall herdr-scratch          # if you installed it that way
 ```
 
 Then delete the `[[keys.command]]` block from `config.toml` and `herdr server reload-config`.
@@ -212,6 +233,10 @@ Then delete the `[[keys.command]]` block from `config.toml` and `herdr server re
 **The popup opens and closes immediately.** tmux failed to start, or the binary is missing.
 If you linked a local checkout, `herdr plugin link` does not build — run
 `go build -o bin/herdr-scratch .` in the plugin directory.
+
+**It stopped working right after `brew upgrade`.** `herdr plugin list` will be pointing at a
+`Cellar/herdr-scratch/<old version>` path that the upgrade removed. Re-run
+`herdr plugin link "$(brew --prefix herdr-scratch)/libexec"`.
 
 **The chord opens the popup but will not close it.** Check `HERDR_SCRATCH_ROOT` is set
 inside the popup. If it is unset, this shell was not started by the plugin.
