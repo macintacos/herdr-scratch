@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -26,9 +27,18 @@ socket client of its own.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		paneID, paneCwd := scratch.PaneTarget(os.Getenv)
 		session := scratch.SessionName(paneID)
+		slog.Debug("resolved the pane this fired from",
+			"pane_id", paneID, "pane_cwd", paneCwd, "session", session,
+			"active_pane_env", os.Getenv("HERDR_ACTIVE_PANE_ID") != "",
+			"plugin_context_json", os.Getenv("HERDR_PLUGIN_CONTEXT_JSON") != "")
 
 		if sessionAttached(session) {
-			return tmuxCmd("detach-client", "-s", session).Run()
+			slog.Info("closing: session is attached, detaching its client", "session", session)
+			err := tmuxCmd("detach-client", "-s", session).Run()
+			if err != nil {
+				slog.Error("detach failed", "session", session, "err", err)
+			}
+			return err
 		}
 
 		if paneCwd == "" {
@@ -41,8 +51,19 @@ socket client of its own.`,
 			"--cwd", paneCwd,
 			"--env", "HERDR_SCRATCH_SESSION="+session,
 		)
-		open.Stderr = os.Stderr
-		return open.Run()
+		slog.Info("opening: no attached session, asking herdr for the pane",
+			"session", session, "cwd", paneCwd, "argv", open.Args)
+
+		// Captured rather than passed through: a keybinding's stderr goes to
+		// herdr, so the reason herdr refused is otherwise lost.
+		out, err := open.CombinedOutput()
+		if err != nil {
+			slog.Error("herdr would not open the pane",
+				"err", err, "output", strings.TrimSpace(string(out)))
+			return err
+		}
+		slog.Debug("herdr opened the pane", "output", strings.TrimSpace(string(out)))
+		return nil
 	},
 }
 
@@ -52,9 +73,18 @@ socket client of its own.`,
 func sessionAttached(session string) bool {
 	out, err := tmuxCmd("display-message", "-p", "-t", session, "#{session_attached}").Output()
 	if err != nil {
+		// Expected the first time a pane is used, and after a reboot. Logged
+		// anyway: told apart from "exists but detached", it is the difference
+		// between a popup that is new and one that lost its session.
+		slog.Debug("no session to attach to", "session", session, "err", err)
 		return false
 	}
-	return strings.TrimSpace(string(out)) != "0"
+	clients := strings.TrimSpace(string(out))
+	attached := scratch.SessionIsAttached(clients)
+	slog.Debug("asked tmux about the session",
+		"session", session, "attached_clients", clients, "attached", attached,
+		"exists", clients != "")
+	return attached
 }
 
 func init() { rootCmd.AddCommand(toggleCmd) }

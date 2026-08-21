@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,8 @@ keep no screen, so they can only hand back a bare prompt.`,
 
 		tmuxPath, err := exec.LookPath("tmux")
 		if err != nil {
+			slog.Error("tmux is not on the PATH herdr handed down",
+				"path", os.Getenv("PATH"), "err", err)
 			return fmt.Errorf("tmux is required but is not on PATH")
 		}
 
@@ -48,9 +51,19 @@ keep no screen, so they can only hand back a bare prompt.`,
 			"HERDR_SCRATCH_POPUP=1",
 			"HERDR_SCRATCH_ROOT="+root,
 		)
+
+		// The last thing this process does as itself. Anything after the exec
+		// is tmux, so a log that stops here means tmux took over — and a log
+		// that never reaches here means the popup died before it started.
+		slog.Info("handing off to tmux",
+			"root", root, "session", session, "tmux", tmuxPath,
+			"shell", os.Getenv("SHELL"), "argv", argv)
 		// Exec rather than spawn: herdr closes the popup when the process it
 		// started exits, so that process must be the tmux client itself.
-		return syscall.Exec(tmuxPath, argv, env)
+		err = syscall.Exec(tmuxPath, argv, env)
+		slog.Error("exec of tmux returned, which only happens when it failed",
+			"tmux", tmuxPath, "err", err)
+		return err
 	},
 }
 

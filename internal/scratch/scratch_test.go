@@ -157,3 +157,39 @@ func TestStableRootFallsBackToTheXDGDefault(t *testing.T) {
 		t.Errorf("StableRoot() = %q, want %q", got, want)
 	}
 }
+
+func TestLogPathPrefersXDGStateHome(t *testing.T) {
+	env := map[string]string{"XDG_STATE_HOME": "/xdg"}
+	got := LogPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/xdg/herdr-scratch/herdr-scratch.log"; got != want {
+		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+}
+
+func TestLogPathFallsBackToTheXDGDefault(t *testing.T) {
+	// A log is state rather than data, so it belongs under .local/state — not
+	// beside the plugin directory StableRoot builds under .local/share.
+	got := LogPath(func(string) string { return "" }, "/home/me")
+	if want := "/home/me/.local/state/herdr-scratch/herdr-scratch.log"; got != want {
+		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+}
+
+func TestSessionIsAttachedTreatsAMissingSessionAsNotAttached(t *testing.T) {
+	// tmux exits 0 and prints nothing for a session it cannot resolve, so an
+	// empty answer means "no such session" — not "attached". Reading it the
+	// other way makes the first press in any new pane try to detach a client
+	// that was never there, which fails, so the popup never opens.
+	if SessionIsAttached("") {
+		t.Error(`SessionIsAttached("") = true, want false`)
+	}
+}
+
+func TestSessionIsAttachedReadsTheClientCount(t *testing.T) {
+	if SessionIsAttached("0\n") {
+		t.Error(`SessionIsAttached("0") = true, want false`)
+	}
+	if !SessionIsAttached("1\n") {
+		t.Error(`SessionIsAttached("1") = false, want true`)
+	}
+}

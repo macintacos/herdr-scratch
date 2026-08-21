@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -21,6 +22,7 @@ close it. Detaching ends the client, which is that command, so the popup closes
 and the session carries on.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if os.Getenv("TMUX") == "" {
+			slog.Warn("dismiss ran outside a popup; $TMUX is unset")
 			return errors.New("not inside a scratch popup")
 		}
 
@@ -32,7 +34,12 @@ and the session carries on.`,
 		// $TMUX already names the server, so no -L is needed here.
 		detach := exec.Command("tmux", scratch.DetachArgs(session)...)
 		detach.Stderr = os.Stderr
-		return detach.Run()
+		slog.Info("dismissing from inside the popup", "session", session)
+		if err := detach.Run(); err != nil {
+			slog.Error("detach failed", "session", session, "err", err)
+			return err
+		}
+		return nil
 	},
 }
 

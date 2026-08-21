@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +79,8 @@ is configured. Use --force to take a newer release's version of it.`,
 				return err
 			}
 		}
+
+		slog.Info("linking", "source", source, "root", root, "force", linkForce)
 
 		register := exec.Command(herdrBin(), "plugin", "link", root)
 		register.Stderr = os.Stderr

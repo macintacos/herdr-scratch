@@ -252,6 +252,25 @@ the Homebrew prefix directly, which pins it to a version an upgrade will delete.
 **The chord opens the popup but will not close it.** Check `HERDR_SCRATCH_ROOT` is set
 inside the popup. If it is unset, this shell was not started by the plugin.
 
+**Nothing at all happens when you press it.** Read the log — every subcommand writes one,
+because a keybinding's stderr goes to herdr and a popup's is inside a popup that is closing:
+
+```sh
+tail -f ~/.local/state/herdr-scratch/herdr-scratch.log
+```
+
+Lines by default, JSON with `--debug`, which also turns on the debug records — the pane the
+chord fired from, what tmux said about its session, and the exact `herdr plugin pane open`
+that followed. To capture a press that way, put `--debug` in the action's command in
+`herdr-plugin.toml`:
+
+```toml
+command = ["./bin/herdr-scratch", "--debug", "toggle"]
+```
+
+Nothing rotates the file. It gets a few lines per press, so it is a long while before that
+matters; `rm` it when it does.
+
 **`q` does nothing in normal mode.** Almost always a `bind -M normal` somewhere in your own
 config, which never fires. Use `-M default`.
 

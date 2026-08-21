@@ -4,6 +4,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,13 +26,30 @@ Each subcommand is invoked by a different part of herdr: toggle by a keybinding,
 popup by the plugin pane itself, dismiss and notify by the shell integration
 running inside the popup.`,
 	SilenceUsage: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		logCloser = openLog(cmd.Name())
+	},
 }
+
+// logCloser holds the open log file so Execute can flush it on the way out.
+var logCloser io.Closer
 
 // Execute runs the CLI, reporting a failure as one line on stderr rather than
 // cobra's default usage dump — these run from keypresses and prompt hooks.
+//
+// The failure is logged as well as printed. Most of these processes have no
+// stderr anyone will ever read: a keybinding's goes to herdr, and popup's is
+// inside a popup that is about to close.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
+		slog.Error("command failed", "err", err)
 		fmt.Fprintln(os.Stderr, "herdr-scratch:", err)
+	}
+	if logCloser != nil {
+		_ = logCloser.Close()
+	}
+	if err != nil {
 		os.Exit(1)
 	}
 }
@@ -64,4 +83,9 @@ func herdrBin() string {
 		return herdr
 	}
 	return "herdr"
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false,
+		"write the log as JSON, including debug records")
 }

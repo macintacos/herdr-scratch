@@ -137,3 +137,32 @@ func StableRoot(lookup func(string) string, home string) string {
 	}
 	return filepath.Join(home, ".local", "share", "herdr-scratch")
 }
+
+// LogPath is the file every subcommand logs to.
+//
+// These run from keypresses and prompt hooks, where stderr goes nowhere anyone
+// can read, so a file is the only place a record survives. State rather than
+// data, hence .local/state and not the .local/share that StableRoot uses.
+//
+// lookup is the environment reader and home the fallback base, both injected so
+// this stays testable.
+func LogPath(lookup func(string) string, home string) string {
+	dir := lookup("XDG_STATE_HOME")
+	if dir == "" {
+		dir = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(dir, "herdr-scratch", "herdr-scratch.log")
+}
+
+// SessionIsAttached reads what `tmux display-message -p -t <session>
+// "#{session_attached}"` printed, which is true exactly when the session's popup
+// is on screen.
+//
+// The empty case is the one that matters: tmux exits 0 and prints nothing for a
+// session it cannot resolve, rather than failing. Treating that as attached
+// makes the first press in a pane detach a client that does not exist, so the
+// popup never opens.
+func SessionIsAttached(out string) bool {
+	clients := strings.TrimSpace(out)
+	return clients != "" && clients != "0"
+}
