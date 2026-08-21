@@ -5,6 +5,7 @@ A scratch shell for [herdr](https://herdr.dev), in a popup you toggle with one c
 ![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/scratch-popup.png)
 
 Press it and a shell opens over whatever you were doing, in that pane's directory.
+Every pane in the space shares it, so it is there wherever you move to.
 Press it again and the popup goes away — but the shell does not. Start a dev server,
 put the popup away, bring it back an hour later and it is still running, with the
 scrollback exactly where you left it.
@@ -155,6 +156,8 @@ without error and then never fires, because it creates a mode fish never enters.
 2. Run something long: `while true; do echo tick; sleep 1; done`
 3. `<prefix>'` → popup closes.
 4. `<prefix>'` → same popup, ticks still counting, scrollback intact.
+5. Close it, move to another pane in the same space, `<prefix>'` → still the same shell,
+   still ticking. Do the same in a pane in a *different* space and you get a new one.
 
 If step 4 gives you a blank screen or a fresh prompt, see Troubleshooting.
 
@@ -166,7 +169,7 @@ Three pieces, each solving one problem herdr leaves open.
 border reads `scratch` rather than the literal `popup`. And because the binding invokes an
 action, it can decide between opening and closing — which is what makes one chord toggle.
 
-**A tmux session per pane.** This is what survives the close. Dismissing detaches the tmux
+**A tmux session per space.** This is what survives the close. Dismissing detaches the tmux
 client, and that client is the process herdr spawned — so herdr tears the popup down on its
 own, while the session and everything in it carry on. Reopening attaches a new client, and
 tmux repaints the screen it kept.
@@ -176,10 +179,14 @@ and hold a process open just fine, but they only pipe bytes — they keep no scr
 reattaching gives you a bare prompt and the previous output is gone. If you only need "the
 process survives", they are enough. For "it comes back exactly as I left it", they are not.
 
-The session is keyed on herdr's pane id, so each pane gets its own scratch shell starting in
-that pane's directory. It runs on its own tmux socket (`-L herdr-scratch`) with its own
-config, so it never touches a tmux you started yourself — and that config drops tmux's
-prefix entirely, leaving the dismiss chord as the one binding in the popup.
+The session is keyed on herdr's space, so every pane in a space reaches the same scratch
+shell. Open it in one pane, put it away, move two panes over and press the chord: the same
+shell comes back, still running what you left. Only the first open picks a directory, and it
+takes the one the pane you were in was sitting in.
+
+It runs on its own tmux socket (`-L herdr-scratch`) with its own config, so it never touches
+a tmux you started yourself — and that config drops tmux's prefix entirely, leaving the
+dismiss chord as the one binding in the popup.
 
 **Detach, not an API call.** Closing is a plain `tmux detach-client`, so the plugin needs no
 socket client of its own — and it is a clean detach rather than herdr killing the client out
@@ -236,12 +243,14 @@ percentage string like `"70%"`. Omit both for herdr's default half-size popup.
 leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
 release's version of it instead, `herdr-scratch link --force`.
 
-**Sessions** — `tmux -L herdr-scratch ls` lists them, one per pane you have used it in.
+**Sessions** — `tmux -L herdr-scratch ls` lists them, one per space you have used it in.
 
-They outlive the pane that created them. Close that herdr pane and its session keeps
-running, but nothing will attach to it again: the next pane gets a new id, so it gets a new
-session. Orphans sit there until you kill them or reboot. If you leave heavy things running
-in scratch shells, check that list now and then.
+A session outlives every pane in its space, which is the point: panes come and go, the
+scratch shell stays. It ends when the space does — herdr reports `workspace.closed` and the
+plugin kills that space's session, so nothing is left holding a dev server nobody can reach.
+
+Exiting the shell ends it too. The space is then back to having no scratch shell, and the
+next press starts a fresh one.
 
 ## Uninstall
 

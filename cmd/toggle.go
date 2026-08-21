@@ -25,11 +25,11 @@ which is the process herdr spawned, so herdr tears the popup down by itself. The
 session and everything running in it are untouched, and the plugin needs no
 socket client of its own.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		paneID, paneCwd := scratch.PaneTarget(os.Getenv)
-		session := scratch.SessionName(paneID)
-		slog.Debug("resolved the pane this fired from",
-			"pane_id", paneID, "pane_cwd", paneCwd, "session", session,
-			"active_pane_env", os.Getenv("HERDR_ACTIVE_PANE_ID") != "",
+		session := scratch.SpaceSession(os.Getenv)
+		paneCwd := scratch.FocusedCwd(os.Getenv)
+		slog.Debug("resolved the space this fired from",
+			"session", session, "pane_cwd", paneCwd,
+			"workspace_env", os.Getenv("HERDR_WORKSPACE_ID"),
 			"plugin_context_json", os.Getenv("HERDR_PLUGIN_CONTEXT_JSON") != "")
 
 		if sessionAttached(session) {

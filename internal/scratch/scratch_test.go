@@ -5,53 +5,67 @@ import (
 	"testing"
 )
 
-func TestSessionNameReplacesTmuxSeparators(t *testing.T) {
-	// herdr pane ids contain a colon, and tmux reads both ':' and '.' as
-	// window/pane separators — a session named "wD:p10" is unaddressable.
-	got := SessionName("wD:p10")
-	if got != "wD-p10" {
-		t.Errorf("SessionName(%q) = %q, want %q", "wD:p10", got, "wD-p10")
+func TestSpaceSessionReadsTheWorkspaceEnvironment(t *testing.T) {
+	// herdr sets HERDR_WORKSPACE_ID for every plugin command, and on a
+	// workspace.closed event it names the space that closed rather than the one
+	// that took focus — which is what lets the same reader serve both.
+	env := map[string]string{"HERDR_WORKSPACE_ID": "wD"}
+	if got := SpaceSession(func(k string) string { return env[k] }); got != "wD" {
+		t.Errorf("SpaceSession() = %q, want %q", got, "wD")
 	}
 }
 
-func TestSessionNameFallsBackWhenPaneIDIsMissing(t *testing.T) {
-	// A pane id is absent when the binding is invoked outside a pane context.
-	// An empty tmux -s argument is an error, so it needs a name of its own.
-	if got := SessionName(""); got != "default" {
-		t.Errorf("SessionName(%q) = %q, want %q", "", got, "default")
-	}
-}
-
-func TestPaneTargetReadsShellBindingEnvironment(t *testing.T) {
-	// A `type = "shell"` keybinding gets plain environment variables.
+func TestSpaceSessionFallsBackToTheContextJSON(t *testing.T) {
 	env := map[string]string{
-		"HERDR_ACTIVE_PANE_ID":  "wD:p10",
-		"HERDR_ACTIVE_PANE_CWD": "/repo",
+		"HERDR_PLUGIN_CONTEXT_JSON": `{"workspace_id":"wE","focused_pane_id":"wE:p1"}`,
 	}
-	id, cwd := PaneTarget(func(k string) string { return env[k] })
-	if id != "wD:p10" || cwd != "/repo" {
-		t.Errorf("PaneTarget() = (%q, %q), want (%q, %q)", id, cwd, "wD:p10", "/repo")
+	if got := SpaceSession(func(k string) string { return env[k] }); got != "wE" {
+		t.Errorf("SpaceSession() = %q, want %q", got, "wE")
 	}
 }
 
-func TestPaneTargetReadsPluginActionContextJSON(t *testing.T) {
+func TestSpaceSessionNamesSomethingWhenTheSpaceIsUnknown(t *testing.T) {
+	// An empty tmux -s argument is an error, so there has to be a name.
+	if got := SpaceSession(func(string) string { return "" }); got != "default" {
+		t.Errorf("SpaceSession() = %q, want %q", got, "default")
+	}
+}
+
+func TestSpaceSessionReplacesTmuxSeparators(t *testing.T) {
+	// tmux reads both ':' and '.' as window/pane separators, so a session named
+	// with either is unaddressable.
+	env := map[string]string{"HERDR_WORKSPACE_ID": "w:D.1"}
+	if got := SpaceSession(func(k string) string { return env[k] }); got != "w-D-1" {
+		t.Errorf("SpaceSession() = %q, want %q", got, "w-D-1")
+	}
+}
+
+func TestFocusedCwdReadsShellBindingEnvironment(t *testing.T) {
+	// A `type = "shell"` keybinding gets plain environment variables.
+	env := map[string]string{"HERDR_ACTIVE_PANE_CWD": "/repo"}
+	if got := FocusedCwd(func(k string) string { return env[k] }); got != "/repo" {
+		t.Errorf("FocusedCwd() = %q, want %q", got, "/repo")
+	}
+}
+
+func TestFocusedCwdReadsPluginActionContextJSON(t *testing.T) {
 	// A `type = "plugin_action"` keybinding gets a JSON context instead, and
 	// none of the HERDR_ACTIVE_* variables. Supporting it is what lets the
 	// documented binding name an action id rather than a filesystem path.
 	env := map[string]string{
-		"HERDR_PLUGIN_CONTEXT_JSON": `{"workspace_id":"wD","focused_pane_id":"wD:p2E","focused_pane_cwd":"/some dir"}`,
+		"HERDR_PLUGIN_CONTEXT_JSON": `{"focused_pane_id":"wD:p2E","focused_pane_cwd":"/some dir"}`,
 	}
-	id, cwd := PaneTarget(func(k string) string { return env[k] })
-	if id != "wD:p2E" || cwd != "/some dir" {
-		t.Errorf("PaneTarget() = (%q, %q), want (%q, %q)", id, cwd, "wD:p2E", "/some dir")
+	if got := FocusedCwd(func(k string) string { return env[k] }); got != "/some dir" {
+		t.Errorf("FocusedCwd() = %q, want %q", got, "/some dir")
 	}
 }
 
-func TestPaneTargetSurvivesUnparseableContext(t *testing.T) {
-	// Never fail a keypress over a context we could not read.
-	env := map[string]string{"HERDR_PLUGIN_CONTEXT_JSON": "not json at all"}
-	if id, cwd := PaneTarget(func(k string) string { return env[k] }); id != "" || cwd != "" {
-		t.Errorf("PaneTarget() = (%q, %q), want empty strings", id, cwd)
+func TestFocusedCwdSurvivesUnparseableContext(t *testing.T) {
+	// A keypress must never fail on a context it cannot read; the caller has its
+	// own fallback for an empty answer.
+	env := map[string]string{"HERDR_PLUGIN_CONTEXT_JSON": "{not json"}
+	if got := FocusedCwd(func(k string) string { return env[k] }); got != "" {
+		t.Errorf("FocusedCwd() = %q, want empty", got)
 	}
 }
 

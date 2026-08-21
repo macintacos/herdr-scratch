@@ -1,6 +1,6 @@
 id                = "user.scratch"
 name              = "Scratch Shell"
-version           = "0.3.3"
+version           = "0.4.0"
 min_herdr_version = "0.8.0"
 description       = "A scratch shell popup that detaches instead of closing"
 platforms         = ["macos", "linux"]
@@ -42,6 +42,14 @@ height    = "70%"
 # and the binding the README suggests; a prefix of ctrl+a bound to ";" would make
 # this "C-a ;".
 command   = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+
+# A scratch shell belongs to its space, and outlives every pane in it — so
+# nothing else is left to end it. Without this the session would sit on the tmux
+# server holding whatever was running in it, unreachable: the space it was keyed
+# to is gone, and the next space gets an id of its own.
+[[events]]
+on      = "workspace.closed"
+command = ["./bin/herdr-scratch", "reap"]
 
 # The binding users are told to add. Naming an action rather than a path means
 # their config keeps working wherever herdr installed this plugin.

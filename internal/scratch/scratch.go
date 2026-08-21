@@ -8,50 +8,68 @@ import (
 	"strings"
 )
 
-// SessionName turns a herdr pane id into a tmux session name.
+// SpaceSession names the tmux session every pane in a space shares.
 //
-// One session per pane, so each pane keeps its own scratch shell in its own
-// directory.
-func SessionName(paneID string) string {
-	if paneID == "" {
+// Keyed on the space rather than the pane so that a scratch shell opened from
+// one pane is the same one the next pane in that space gets. It is also what
+// bounds the session's life: a space that closes takes its shell with it, which
+// a pane-keyed session could not do, since panes come and go under a space that
+// stays.
+//
+// herdr sets HERDR_WORKSPACE_ID on every plugin command, and on a
+// workspace.closed event it names the space that closed rather than the one
+// that took focus — so this reader serves the toggle and the reap alike. The
+// context JSON carries the same id for bindings that get no environment.
+//
+// lookup is the environment reader, injected so this stays testable.
+func SpaceSession(lookup func(string) string) string {
+	space := lookup("HERDR_WORKSPACE_ID")
+	if space == "" {
+		space = readContext(lookup).WorkspaceID
+	}
+	if space == "" {
 		return "default"
 	}
-	return strings.NewReplacer(":", "-", ".", "-").Replace(paneID)
+	// tmux reads both ':' and '.' as window/pane separators, so a session named
+	// with either is unaddressable.
+	return strings.NewReplacer(":", "-", ".", "-").Replace(space)
 }
 
-// PaneTarget reports the herdr pane a keybinding fired from: its id, and the
-// directory a new scratch shell should start in.
+// FocusedCwd is the directory a new scratch shell should start in: the one the
+// pane that fired the binding was sitting in.
+//
+// It matters only the first time a space's shell is created. Every open after
+// that attaches to a session already running somewhere, which is the point of
+// sharing one per space.
 //
 // The two kinds of binding hand this over differently. A `type = "shell"`
 // command gets plain environment variables; a `type = "plugin_action"` gets a
 // JSON context and none of them. Reading both is what lets the documented
 // binding name an action id instead of a path — and a path is the thing that
 // breaks when herdr installs the plugin somewhere else.
-//
-// lookup is the environment reader, injected so this stays testable.
-func PaneTarget(lookup func(string) string) (id, cwd string) {
-	id, cwd = lookup("HERDR_ACTIVE_PANE_ID"), lookup("HERDR_ACTIVE_PANE_CWD")
-	if id != "" && cwd != "" {
-		return id, cwd
+func FocusedCwd(lookup func(string) string) string {
+	if cwd := lookup("HERDR_ACTIVE_PANE_CWD"); cwd != "" {
+		return cwd
 	}
+	return readContext(lookup).FocusedPaneCwd
+}
 
-	var ctx struct {
-		PaneID  string `json:"focused_pane_id"`
-		PaneCwd string `json:"focused_pane_cwd"`
-	}
-	// A context we cannot parse leaves the fields empty rather than failing:
-	// callers supply their own fallbacks, and a keypress should never error.
+// herdrContext is the slice of HERDR_PLUGIN_CONTEXT_JSON this plugin reads.
+type herdrContext struct {
+	WorkspaceID    string `json:"workspace_id"`
+	FocusedPaneCwd string `json:"focused_pane_cwd"`
+}
+
+// readContext parses the context herdr passes, or reports an empty one.
+//
+// A context that cannot be parsed leaves the fields empty rather than failing:
+// callers supply their own fallbacks, and a keypress should never error.
+func readContext(lookup func(string) string) herdrContext {
+	var ctx herdrContext
 	if raw := lookup("HERDR_PLUGIN_CONTEXT_JSON"); raw != "" {
 		_ = json.Unmarshal([]byte(raw), &ctx)
 	}
-
-	if id == "" {
-		id = ctx.PaneID
-	}
-	if cwd == "" {
-		cwd = ctx.PaneCwd
-	}
-	return id, cwd
+	return ctx
 }
 
 // ShellCommand is the argv tmux should run for a new scratch session.
