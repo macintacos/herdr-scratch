@@ -166,3 +166,33 @@ func SessionIsAttached(out string) bool {
 	clients := strings.TrimSpace(out)
 	return clients != "" && clients != "0"
 }
+
+// DismissKeys splits a dismiss chord into the key that opens tmux's table and
+// the key that answers it — "C-b '" being the two keys of ctrl+b then quote.
+//
+// It is a chord rather than a single key because it has to be the one that
+// opened the popup, and herdr's own is a prefix plus a key. Which prefix, and
+// which key, are the user's: the default here matches herdr's default, and
+// anything else is passed to popup from the manifest.
+//
+// Reported as not-ok unless it is exactly two keys. tmux would take a malformed
+// binding without complaint and leave the popup with no way out.
+func DismissKeys(chord string) (lead, key string, ok bool) {
+	keys := strings.Fields(chord)
+	if len(keys) != 2 {
+		return "", "", false
+	}
+	return keys[0], keys[1], true
+}
+
+// TmuxKeyArg spells a key the way tmux's own argument parser needs it.
+//
+// Only ";" needs the treatment: tmux reads a lone semicolon as the separator
+// between two commands, so binding it produces two valid commands and no
+// binding — succeeding quietly, which is the worst way for this to fail.
+func TmuxKeyArg(key string) string {
+	if key == ";" {
+		return `\;`
+	}
+	return key
+}

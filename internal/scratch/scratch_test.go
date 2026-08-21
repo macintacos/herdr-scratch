@@ -193,3 +193,37 @@ func TestSessionIsAttachedReadsTheClientCount(t *testing.T) {
 		t.Error(`SessionIsAttached("1") = false, want true`)
 	}
 }
+
+func TestDismissKeysSplitsTheChord(t *testing.T) {
+	lead, key, ok := DismissKeys("C-a ;")
+	if !ok || lead != "C-a" || key != ";" {
+		t.Errorf("DismissKeys() = (%q, %q, %v), want (%q, %q, true)", lead, key, ok, "C-a", ";")
+	}
+}
+
+func TestDismissKeysRejectsAnythingButTwoKeys(t *testing.T) {
+	// A chord this cannot read would otherwise reach tmux as a malformed
+	// bind-key, leaving a popup with no way out of it.
+	for _, chord := range []string{"", "C-b", "C-b ' x"} {
+		if _, _, ok := DismissKeys(chord); ok {
+			t.Errorf("DismissKeys(%q) reported ok, want rejected", chord)
+		}
+	}
+}
+
+func TestTmuxKeyArgEscapesTheCommandSeparator(t *testing.T) {
+	// tmux reads a lone ";" as the separator between two commands, so a chord
+	// ending in one binds nothing — and `bind-key -T scratch ; detach-client`
+	// is two commands tmux is happy to run, which is why it fails quietly.
+	if got := TmuxKeyArg(";"); got != `\;` {
+		t.Errorf("TmuxKeyArg(%q) = %q, want %q", ";", got, `\;`)
+	}
+}
+
+func TestTmuxKeyArgLeavesOrdinaryKeysAlone(t *testing.T) {
+	for _, key := range []string{"C-b", "'", "F1", "Escape"} {
+		if got := TmuxKeyArg(key); got != key {
+			t.Errorf("TmuxKeyArg(%q) = %q, want it unchanged", key, got)
+		}
+	}
+}

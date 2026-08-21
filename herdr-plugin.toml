@@ -1,6 +1,6 @@
 id                = "user.scratch"
 name              = "Scratch Shell"
-version           = "0.3.2"
+version           = "0.3.3"
 min_herdr_version = "0.8.0"
 description       = "A scratch shell popup that detaches instead of closing"
 platforms         = ["macos", "linux"]
@@ -34,7 +34,14 @@ height    = "70%"
 # relative path is resolved against the herdr server's working directory rather
 # than the plugin's. An action's is resolved against the plugin — hence the two
 # spellings below.
-command   = ["/bin/sh", "-c", 'exec "$HERDR_PLUGIN_ROOT/bin/herdr-scratch" popup']
+#
+# --dismiss is the chord that closes the popup, in tmux's key syntax. It has to
+# be the same chord that opens it — the binding from config.toml with your herdr
+# prefix spelled out — because a popup takes every keypress and tmux is the only
+# layer left that can answer one. The default matches herdr's own default prefix
+# and the binding the README suggests; a prefix of ctrl+a bound to ";" would make
+# this "C-a ;".
+command   = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
 
 # The binding users are told to add. Naming an action rather than a path means
 # their config keeps working wherever herdr installed this plugin.

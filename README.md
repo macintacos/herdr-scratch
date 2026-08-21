@@ -86,7 +86,8 @@ description = "scratch shell"
 Then `herdr server reload-config` (start herdr first if it is not running).
 
 `prefix` means whatever your herdr prefix key already is — `ctrl+b` unless you changed it.
-Use any key you like in place of `'`.
+Use any key you like in place of `'` — but if you do, tell the popup, or it will not answer
+the chord you actually press. See **The dismiss chord** under Configuring.
 
 This names an **action**, not a path, so it keeps working wherever herdr put the plugin.
 
@@ -177,8 +178,8 @@ process survives", they are enough. For "it comes back exactly as I left it", th
 
 The session is keyed on herdr's pane id, so each pane gets its own scratch shell starting in
 that pane's directory. It runs on its own tmux socket (`-L herdr-scratch`) with its own
-config, so it never touches a tmux you started yourself — and that config unbinds tmux's
-prefix, which is otherwise `ctrl+b` and would eat the dismiss chord.
+config, so it never touches a tmux you started yourself — and that config drops tmux's
+prefix entirely, leaving the dismiss chord as the one binding in the popup.
 
 **Detach, not an API call.** Closing is a plain `tmux detach-client`, so the plugin needs no
 socket client of its own — and it is a clean detach rather than herdr killing the client out
@@ -214,6 +215,18 @@ set -g herdr_scratch_notify_after 30000   # 30 seconds
 ```
 
 ## Configuring
+
+**The dismiss chord** — `--dismiss` on the pane command in `herdr-plugin.toml`, in tmux's
+key syntax. It has to name the same chord that *opens* the popup, and the default assumes
+herdr's default prefix with the binding above:
+
+```toml
+command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+```
+
+If your herdr prefix is `ctrl+a`, or you bound something other than `'`, change this to
+match — `"C-a ;"` for `ctrl+a` then semicolon. Nothing can work it out for you: herdr has
+no way to report its prefix, and the popup has to be told before it opens.
 
 **Size** — `width` and `height` in `herdr-plugin.toml`. Terminal cells as numbers, or a
 percentage string like `"70%"`. Omit both for herdr's default half-size popup.

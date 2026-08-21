@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/macintacos/herdr-scratch/internal/scratch"
@@ -38,25 +39,60 @@ keep no screen, so they can only hand back a bare prompt.`,
 			return fmt.Errorf("tmux is required but is not on PATH")
 		}
 
+		lead, key, ok := scratch.DismissKeys(dismissChord)
+		if !ok {
+			return fmt.Errorf("--dismiss wants two tmux keys, like %q, got %q", "C-b '", dismissChord)
+		}
+
 		config := filepath.Join(root, "tmux.conf")
 
-		// -f below is read only when tmux has to start a server, so on every
-		// attach after the first the running server keeps whatever config it
-		// started with — an upgraded tmux.conf would never take effect. Sourcing
-		// it here applies it to a server that is already up. It fails when there
-		// is none, which is exactly when -f is about to do the job instead.
-		if err := tmuxCmd("source-file", config).Run(); err != nil {
-			slog.Debug("no running server to re-read the config", "err", err)
+		// Create the session detached first, then configure, then attach — three
+		// steps rather than one `new-session -A` because the chord has to be
+		// bound before a client is on the session, and there is no server to
+		// bind against until a session exists. `start-server` will not do: an
+		// empty server exits the moment it starts.
+		//
+		// -A here means an existing session is left alone rather than being an
+		// error, and its shell argument ignored, which is what makes reopening
+		// return the screen it had.
+		create := []string{"-f", config, "new-session", "-A", "-d", "-s", session}
+		create = append(create, scratch.ShellCommand(os.Getenv("SHELL"), root)...)
+		if out, err := tmuxCmd(create...).CombinedOutput(); err != nil {
+			slog.Error("could not create the scratch session",
+				"session", session, "err", err, "output", strings.TrimSpace(string(out)))
+			return fmt.Errorf("could not create the scratch session: %w", err)
 		}
 
-		argv := []string{
-			"tmux", "-L", tmuxSocket,
-			"-f", config,
-			"new-session", "-A", "-s", session,
+		// -f above is read only when tmux has to start a server, so a server
+		// that outlives one popup keeps whatever config it started with — an
+		// upgraded tmux.conf would never take effect. Sourcing it on every open
+		// is what keeps a long-lived server current.
+		//
+		// Not fatal: a popup that opens with yesterday's config still beats no
+		// popup, and the chord below is bound either way.
+		if out, err := tmuxCmd("source-file", config).CombinedOutput(); err != nil {
+			slog.Error("could not re-read the tmux config",
+				"config", config, "err", err, "output", strings.TrimSpace(string(out)))
 		}
-		// On re-attach tmux ignores this command, which is correct: the shell
-		// it would apply to is already running.
-		argv = append(argv, scratch.ShellCommand(os.Getenv("SHELL"), root)...)
+
+		// The chord, bound here rather than in tmux.conf because it is the
+		// user's choice and that file ships with the plugin. Pressing the lead
+		// key twice sends the literal through, so binding it costs that one key
+		// and nothing else.
+		leadArg, keyArg := scratch.TmuxKeyArg(lead), scratch.TmuxKeyArg(key)
+		for _, bind := range [][]string{
+			{"bind-key", "-n", leadArg, "switch-client", "-T", dismissTable},
+			{"bind-key", "-T", dismissTable, keyArg, "detach-client"},
+			{"bind-key", "-T", dismissTable, leadArg, "send-keys", leadArg},
+		} {
+			if out, err := tmuxCmd(bind...).CombinedOutput(); err != nil {
+				slog.Error("could not bind the dismiss chord", "chord", dismissChord,
+					"bind", bind, "err", err, "output", strings.TrimSpace(string(out)))
+			}
+		}
+		slog.Debug("bound the dismiss chord", "chord", dismissChord, "lead", lead, "key", key)
+
+		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", session}
 
 		env := append(os.Environ(),
 			"HERDR_SCRATCH_POPUP=1",
@@ -78,4 +114,15 @@ keep no screen, so they can only hand back a bare prompt.`,
 	},
 }
 
-func init() { rootCmd.AddCommand(popupCmd) }
+// dismissTable is the one-key tmux key table the lead key switches into.
+const dismissTable = "scratch"
+
+// dismissChord defaults to herdr's own default prefix and the binding the README
+// suggests, so the common setup needs no argument at all.
+var dismissChord string
+
+func init() {
+	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "C-b '",
+		"the two tmux keys that close the popup, matching the chord that opens it")
+	rootCmd.AddCommand(popupCmd)
+}
