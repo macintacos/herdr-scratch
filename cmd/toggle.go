@@ -31,15 +31,11 @@ socket client of its own.`,
 			return tmuxCmd("detach-client", "-s", session).Run()
 		}
 
-		herdr := os.Getenv("HERDR_BIN_PATH")
-		if herdr == "" {
-			herdr = "herdr"
-		}
 		if paneCwd == "" {
 			paneCwd, _ = os.UserHomeDir()
 		}
 
-		open := exec.Command(herdr, "plugin", "pane", "open",
+		open := exec.Command(herdrBin(), "plugin", "pane", "open",
 			"--plugin", pluginID,
 			"--entrypoint", entrypoint,
 			"--cwd", paneCwd,

@@ -106,3 +106,34 @@ func NotifyArgs(command, outcome string) []string {
 func DetachArgs(session string) []string {
 	return []string{"detach-client", "-s", session}
 }
+
+// StableSource turns the directory a build lives in into one whose path will
+// still resolve after the next upgrade.
+//
+// It exists because herdr resolves a plugin's manifest and records the real
+// directory holding it, which under Homebrew is Cellar/<formula>/<version> —
+// deleted by the upgrade that replaces it. Homebrew keeps opt/<formula> pointed
+// at whatever version is current, so that is what a link should chase.
+//
+// Anything that is not a Cellar path — a git checkout — is already stable and
+// comes back untouched.
+func StableSource(root string) string {
+	parent, version := filepath.Split(filepath.Clean(root))
+	parent, formula := filepath.Split(filepath.Clean(parent))
+	if version == "" || formula == "" || filepath.Base(filepath.Clean(parent)) != "Cellar" {
+		return root
+	}
+	return filepath.Join(filepath.Dir(filepath.Clean(parent)), "opt", formula)
+}
+
+// StableRoot is the directory herdr is pointed at: one this plugin owns, which
+// no upgrade renumbers.
+//
+// lookup is the environment reader and home the fallback base, both injected so
+// this stays testable.
+func StableRoot(lookup func(string) string, home string) string {
+	if data := lookup("XDG_DATA_HOME"); data != "" {
+		return filepath.Join(data, "herdr-scratch")
+	}
+	return filepath.Join(home, ".local", "share", "herdr-scratch")
+}

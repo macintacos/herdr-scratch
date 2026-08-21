@@ -21,19 +21,31 @@ macOS and Linux. Not Windows — it depends on tmux.
 
 ```sh
 brew install macintacos/tap/herdr-scratch
-herdr plugin link "$(brew --prefix herdr-scratch)"
+herdr-scratch link
 ```
 
 The formula brings herdr and tmux with it, and Go to build with, so there is nothing to
 install first.
 
-The second line is the one thing it cannot do for you. herdr has no plugin search path — it
-learns about a plugin from `install` or `link` and nothing else — and a formula must not
-write outside Homebrew's prefix. `brew` reprints the command after every install.
+`link` runs once. Upgrades need nothing — `brew upgrade herdr-scratch` and the plugin is
+already the new one.
 
-> **Run it again after `brew upgrade herdr-scratch`.** herdr resolves the path it is given
-> down to the real directory, and that one is version-numbered, so an upgrade leaves the
-> registration pointing at a version that no longer exists.
+<details>
+<summary>Why registering is a command at all, rather than something the formula does</summary>
+
+herdr has no plugin search path: it learns about a plugin from `install` or `link` and
+nothing else. A formula cannot make that call, because Homebrew runs install scripts with
+`HOME` pointed at a temporary directory — herdr would write the registration somewhere that
+is deleted moments later.
+
+Nor can herdr simply be handed the Homebrew prefix. It resolves a plugin's manifest and
+records the real directory holding it, which is `Cellar/herdr-scratch/<version>` — deleted
+by the very next upgrade. That is the version-pinning `link` exists to avoid: it builds a
+directory of its own, holding the manifest as a real file and symlinking the rest at
+`opt/herdr-scratch`, the path Homebrew keeps pointed at whatever is current. herdr resolves
+to somewhere that never moves, and what is under it always reaches the build you have now.
+
+</details>
 
 ### Without Homebrew
 
@@ -204,6 +216,11 @@ set -g herdr_scratch_notify_after 30000   # 30 seconds
 **Size** — `width` and `height` in `herdr-plugin.toml`. Terminal cells as numbers, or a
 percentage string like `"70%"`. Omit both for herdr's default half-size popup.
 
+`herdr plugin list` prints the copy in force. If you installed with brew that is
+`~/.local/share/herdr-scratch/herdr-plugin.toml`, and it is yours: `herdr-scratch link`
+leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
+release's version of it instead, `herdr-scratch link --force`.
+
 **Sessions** — `tmux -L herdr-scratch ls` lists them, one per pane you have used it in.
 
 They outlive the pane that created them. Close that herdr pane and its session keeps
@@ -216,6 +233,7 @@ in scratch shells, check that list now and then.
 ```sh
 tmux -L herdr-scratch kill-server     # stop every scratch shell
 herdr plugin unlink user.scratch      # or: herdr plugin uninstall user.scratch
+rm -rf ~/.local/share/herdr-scratch   # what `herdr-scratch link` created
 brew uninstall herdr-scratch          # if you installed it that way
 ```
 
@@ -227,9 +245,9 @@ Then delete the `[[keys.command]]` block from `config.toml` and `herdr server re
 If you linked a local checkout, `herdr plugin link` does not build — run
 `go build -o bin/herdr-scratch .` in the plugin directory.
 
-**It stopped working right after `brew upgrade`.** `herdr plugin list` will be pointing at a
-`Cellar/herdr-scratch/<old version>` path that the upgrade removed. Re-run
-`herdr plugin link "$(brew --prefix herdr-scratch)"`.
+**`herdr plugin list` shows a `Cellar/herdr-scratch/<version>` path.** herdr was pointed at
+the Homebrew prefix directly, which pins it to a version an upgrade will delete. Run
+`herdr-scratch link` to move the registration somewhere that survives.
 
 **The chord opens the popup but will not close it.** Check `HERDR_SCRATCH_ROOT` is set
 inside the popup. If it is unset, this shell was not started by the plugin.

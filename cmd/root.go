@@ -55,3 +55,13 @@ func pluginRoot() (string, error) {
 	}
 	return filepath.Dir(filepath.Dir(self)), nil // <root>/bin/herdr-scratch
 }
+
+// herdrBin is the herdr to invoke. herdr sets HERDR_BIN_PATH when it runs a
+// plugin command, which names the running herdr rather than whichever one PATH
+// happens to find.
+func herdrBin() string {
+	if herdr := os.Getenv("HERDR_BIN_PATH"); herdr != "" {
+		return herdr
+	}
+	return "herdr"
+}

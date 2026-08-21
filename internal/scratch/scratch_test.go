@@ -119,3 +119,41 @@ func TestDetachArgsTargetsTheSessionNotTheCurrentClient(t *testing.T) {
 		t.Errorf("DetachArgs() = %#v, want %#v", got, want)
 	}
 }
+
+func TestStableSourceRewritesACellarPathToItsOptSymlink(t *testing.T) {
+	// Homebrew numbers the Cellar directory by version and deletes the old one
+	// on upgrade. Symlinking a plugin root at it would pin the registration to
+	// a version that stops existing; opt/<formula> is the path Homebrew keeps
+	// re-pointing at whatever is current.
+	got := StableSource("/opt/homebrew/Cellar/herdr-scratch/0.2.0")
+	want := "/opt/homebrew/opt/herdr-scratch"
+	if got != want {
+		t.Errorf("StableSource() = %q, want %q", got, want)
+	}
+}
+
+func TestStableSourceLeavesANonCellarPathAlone(t *testing.T) {
+	// A git checkout is already a stable directory. Rewriting it would point
+	// the link at somewhere that does not exist.
+	dir := "/Users/me/.config/herdr/scratch"
+	if got := StableSource(dir); got != dir {
+		t.Errorf("StableSource(%q) = %q, want it unchanged", dir, got)
+	}
+}
+
+func TestStableRootPrefersXDGDataHome(t *testing.T) {
+	env := map[string]string{"XDG_DATA_HOME": "/xdg"}
+	got := StableRoot(func(k string) string { return env[k] }, "/home/me")
+	if want := "/xdg/herdr-scratch"; got != want {
+		t.Errorf("StableRoot() = %q, want %q", got, want)
+	}
+}
+
+func TestStableRootFallsBackToTheXDGDefault(t *testing.T) {
+	// XDG_DATA_HOME is unset far more often than not, and the directory has to
+	// land somewhere predictable either way — herdr records it permanently.
+	got := StableRoot(func(string) string { return "" }, "/home/me")
+	if want := "/home/me/.local/share/herdr-scratch"; got != want {
+		t.Errorf("StableRoot() = %q, want %q", got, want)
+	}
+}
