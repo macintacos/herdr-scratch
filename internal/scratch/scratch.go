@@ -228,7 +228,19 @@ func CreateArgs(exists bool, config, session, shell, root string) []string {
 	if exists {
 		return nil
 	}
-	create := []string{"-f", config, "new-session", "-d", "-s", session}
+	create := []string{"-f", config, "new-session", "-d", "-s", session,
+		// On the session, because the shell is spawned by the tmux server and
+		// inherits its environment — not the environment of the client that
+		// attaches afterwards. Exporting these around the attach reaches the
+		// client and nothing else, so the shell integration, which does nothing
+		// unless it sees HERDR_SCRATCH_POPUP, would never load.
+		//
+		// -e rather than the server's own environment: a server outlives the
+		// session that started it, so anything inherited from it would be the
+		// first space's values for every space after.
+		"-e", "HERDR_SCRATCH_POPUP=1",
+		"-e", "HERDR_SCRATCH_ROOT=" + root,
+	}
 	return append(create, ShellCommand(shell, root)...)
 }
 
@@ -240,4 +252,14 @@ func CreateArgs(exists bool, config, session, shell, root string) []string {
 // it. The leading '=' asks for exact matching only.
 func Target(session string) string {
 	return "=" + session
+}
+
+// PaneTarget names a session where tmux wants a pane rather than a session.
+//
+// display-message is the one that cares. Handed a bare session name it prints
+// nothing and still exits 0 — indistinguishable from a session with no client,
+// so an open popup reads as closed. The trailing colon asks for that session's
+// current window and pane, which is a pane target and resolves.
+func PaneTarget(session string) string {
+	return Target(session) + ":"
 }

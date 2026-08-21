@@ -243,8 +243,18 @@ func TestTmuxKeyArgLeavesOrdinaryKeysAlone(t *testing.T) {
 }
 
 func TestCreateArgsBuildsADetachedSessionWhenThereIsNone(t *testing.T) {
+	// The environment goes on the session with -e because the shell is spawned
+	// by the tmux server, not by the client that attaches afterwards. Exporting
+	// these around the attach reaches the client and nothing else, so the shell
+	// integration, which does nothing unless it sees HERDR_SCRATCH_POPUP, would
+	// never load.
 	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root")
-	want := []string{"-f", "/root/tmux.conf", "new-session", "-d", "-s", "wD", "/bin/zsh"}
+	want := []string{
+		"-f", "/root/tmux.conf", "new-session", "-d", "-s", "wD",
+		"-e", "HERDR_SCRATCH_POPUP=1",
+		"-e", "HERDR_SCRATCH_ROOT=/root",
+		"/bin/zsh",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("CreateArgs() = %q, want %q", got, want)
 	}
@@ -276,5 +286,14 @@ func TestTargetAsksTmuxForAnExactSessionName(t *testing.T) {
 	// reaping it. tmux's '=' asks for the session actually named this.
 	if got := Target("w1"); got != "=w1" {
 		t.Errorf("Target() = %q, want %q", got, "=w1")
+	}
+}
+
+func TestPaneTargetAsksTmuxForAPaneNotASession(t *testing.T) {
+	// display-message takes a pane, and a bare session name is not one: given
+	// "=wD" it prints nothing and still exits 0, which reads as "not attached"
+	// for a session that is. The trailing colon is what makes it a pane target.
+	if got := PaneTarget("wD"); got != "=wD:" {
+		t.Errorf("PaneTarget() = %q, want %q", got, "=wD:")
 	}
 }

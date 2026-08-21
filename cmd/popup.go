@@ -93,11 +93,6 @@ keep no screen, so they can only hand back a bare prompt.`,
 
 		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", scratch.Target(session)}
 
-		env := append(os.Environ(),
-			"HERDR_SCRATCH_POPUP=1",
-			"HERDR_SCRATCH_ROOT="+root,
-		)
-
 		// The last thing this process does as itself. Anything after the exec
 		// is tmux, so a log that stops here means tmux took over — and a log
 		// that never reaches here means the popup died before it started.
@@ -106,7 +101,7 @@ keep no screen, so they can only hand back a bare prompt.`,
 			"shell", os.Getenv("SHELL"), "argv", argv)
 		// Exec rather than spawn: herdr closes the popup when the process it
 		// started exits, so that process must be the tmux client itself.
-		err = syscall.Exec(tmuxPath, argv, env)
+		err = syscall.Exec(tmuxPath, argv, os.Environ())
 		slog.Error("exec of tmux returned, which only happens when it failed",
 			"tmux", tmuxPath, "err", err)
 		return err
