@@ -1,0 +1,4 @@
+# Built by the [[build]] command in herdr-plugin.toml at install time, and by
+# `go build -o bin/herdr-scratch .` for a linked local checkout. Platform- and
+# arch-specific, so it is never committed.
+/bin/
