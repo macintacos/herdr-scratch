@@ -1,4 +1,4 @@
-# herdr-scratch
+# 🐏 `herdr-scratch` 📜
 
 A scratch shell for [herdr](https://herdr.dev), in a popup you toggle with one chord.
 
