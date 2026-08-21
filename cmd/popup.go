@@ -38,9 +38,20 @@ keep no screen, so they can only hand back a bare prompt.`,
 			return fmt.Errorf("tmux is required but is not on PATH")
 		}
 
+		config := filepath.Join(root, "tmux.conf")
+
+		// -f below is read only when tmux has to start a server, so on every
+		// attach after the first the running server keeps whatever config it
+		// started with — an upgraded tmux.conf would never take effect. Sourcing
+		// it here applies it to a server that is already up. It fails when there
+		// is none, which is exactly when -f is about to do the job instead.
+		if err := tmuxCmd("source-file", config).Run(); err != nil {
+			slog.Debug("no running server to re-read the config", "err", err)
+		}
+
 		argv := []string{
 			"tmux", "-L", tmuxSocket,
-			"-f", filepath.Join(root, "tmux.conf"),
+			"-f", config,
 			"new-session", "-A", "-s", session,
 		}
 		// On re-attach tmux ignores this command, which is correct: the shell

@@ -20,13 +20,6 @@ end
 # the scrollback says what happened instead of the popup just vanishing.
 bind -M default q "commandline -r herdr-scratch-dismiss; commandline -f execute"
 
-# The prefix chord, for when a command is running and there is no prompt to type
-# `q` at. herdr never sees this in here — a popup takes all terminal input — so
-# fish answers it directly. tmux.conf unbinds tmux's own prefix so ctrl+b gets
-# this far.
-bind -M insert ctrl-b,"'" herdr-scratch-dismiss
-bind -M default ctrl-b,"'" herdr-scratch-dismiss
-
 # Tell you when something finishes in a popup you are not looking at — the dev
 # server that died while you were somewhere else.
 #

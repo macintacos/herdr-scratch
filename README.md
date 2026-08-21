@@ -103,44 +103,46 @@ Inside the scratch popup:
 | key | mode | what it does |
 | --- | --- | --- |
 | `q` | vi normal mode | writes out `herdr-scratch-dismiss` and runs it |
-| `ctrl+b` `'` | any mode | dismisses immediately, no prompt needed |
+| `ctrl+b` `'` | any shell, even mid-command | dismisses immediately, no prompt needed |
 
 `q` is for when you are sitting at a prompt. The chord is for when something is running and
 there is no prompt to type at — it is the same chord that opened the popup, so it matches
-the muscle memory, just answered by fish instead of herdr.
+the muscle memory, just answered by tmux instead of herdr.
 
 **Why the popup needs its own keys at all.** A herdr popup, per the herdr docs, "receives
 all terminal input, including Escape, until its command exits." Your prefix key does not
 reach herdr while a popup is up. So the chord opens the popup but cannot close it — only
 something running *inside* it can.
 
+**And why the chord is tmux's and not the shell's.** A shell reads keys only in its line
+editor. Start a dev server and fish stops reading them, so a binding there cannot fire —
+the chord is echoed into the server's output instead. tmux sees every keypress before the
+program in the pane does, which makes it the one layer that can answer while something is
+running. `q` stays a fish binding because a prompt is the only place it makes sense.
+
 ### Shells other than fish
 
-Only fish is wired up automatically, through `fish --init-command`. bash and zsh have no
-equivalent that does not involve displacing your own rc file, so they are left untouched
-and you bind things yourself. `herdr-scratch dismiss` is the command to bind — but **keep
-the guard**, or you will bind the chord in every shell you open:
+**The chord needs nothing from your shell.** It is a tmux binding, so it works the same in
+bash, zsh, nu or anything else the popup starts — including while a command is running,
+which is the case no shell binding can cover.
 
-```bash
-# bash — ctrl+b then '  (\047 is the apostrophe, which avoids quoting trouble)
-if [ -n "${HERDR_SCRATCH_ROOT:-}" ]; then
-    bind -x '"\C-b\047": "$HERDR_SCRATCH_ROOT/bin/herdr-scratch" dismiss'
-fi
-```
+What is fish-only is the rest: the bare `q`, and the finish notifications. Both are loaded
+through `fish --init-command`, which is why fish costs you no shell config. bash and zsh
+have no equivalent that avoids displacing your own rc file, so they are left alone.
+
+`q` relies on fish's vi mode having a distinct command mode to bind into. In zsh you could
+get close, guarded so it only binds inside a popup:
 
 ```zsh
-# zsh — ctrl+b then '
 if [[ -n ${HERDR_SCRATCH_ROOT:-} ]]; then
     herdr-scratch-dismiss() { "$HERDR_SCRATCH_ROOT/bin/herdr-scratch" dismiss }
     zle -N herdr-scratch-dismiss
-    bindkey "^b'" herdr-scratch-dismiss
+    bindkey -M vicmd q herdr-scratch-dismiss
 fi
 ```
 
-There is no bash or zsh equivalent of the bare `q` binding — it relies on fish's vi mode
-having a distinct command mode to bind into. In zsh you could get close with
-`bindkey -M vicmd q herdr-scratch-dismiss`. The notification hook is fish-only too, since
-it hangs off `fish_postexec`.
+The notification hook has no portable equivalent at all, since it hangs off
+`fish_postexec`.
 
 **If you use fish's vi mode elsewhere, note the mode name.** Bindings go on `-M default`,
 because `default` is what fish calls vi's normal mode. `bind -M normal …` is accepted

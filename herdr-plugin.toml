@@ -1,6 +1,6 @@
 id                = "user.scratch"
 name              = "Scratch Shell"
-version           = "0.3.1"
+version           = "0.3.2"
 min_herdr_version = "0.8.0"
 description       = "A scratch shell popup that detaches instead of closing"
 platforms         = ["macos", "linux"]
