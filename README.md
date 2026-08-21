@@ -24,7 +24,6 @@ macOS and Linux. Not Windows — it depends on tmux.
 | **herdr** | 0.8.0+ (`herdr --version`). Earlier versions have no `plugin pane` command |
 | **tmux** | `brew install tmux` / `apt install tmux`. It is what keeps the shell alive *and* the screen intact |
 | **Go** | 1.21+, to compile the plugin binary at install time |
-| **terminal-notifier** | optional, macOS only, for finish notifications |
 
 ## Install
 
@@ -160,25 +159,25 @@ from under tmux.
 
 ## Notifications
 
-Optional, macOS only, fish only, and silent unless `terminal-notifier` is installed.
+When a command finishes in a popup you are **not** looking at, you get a notification. No
+extra install, and nothing to turn on.
 
-```sh
-brew install terminal-notifier
-```
-
-When a command finishes in a popup you are **not** looking at, you get a desktop
-notification. The shell inside the popup keeps running while detached, so fish keeps firing
+The shell inside the popup keeps running while detached, so fish keeps firing
 `fish_postexec` after every command — that is what notices. tmux reports zero attached
 clients exactly when the popup is closed, so a popup you are watching stays quiet.
 
-The notification wears **your terminal's icon**, via `-appIcon` and the bundle id macOS
-publishes in `__CFBundleIdentifier`, which survives down through herdr and tmux into the
-popup. So it follows whichever terminal is actually attached rather than being pinned to
-one.
+herdr posts it, which is what makes it wear **your terminal's icon and name**, with a click
+that focuses the terminal. It also means delivery follows your herdr config — a desktop
+notification, an in-app toast, or off entirely — instead of this plugin deciding for you.
 
-> Not `-sender`, which is the obvious flag for this and does not work: it asks
-> terminal-notifier to post *as* another application, which needs a private bundle-id API
-> that recent macOS no longer honours. The notification never arrives at all.
+> A notifier binary cannot do this. macOS binds a notification to the bundle that actually
+> posts it, so with terminal-notifier the sender stays terminal-notifier: `-sender` needs a
+> private API macOS no longer honours and renders nothing at all, `-appIcon` is accepted and
+> ignored, and `-contentImage` only pins a thumbnail beside a notification still labelled
+> terminal-notifier.
+
+Most terminals suppress desktop notifications while they are focused, so expect these when
+you are in another app — which is when they are worth having.
 
 Commands shorter than 10 seconds are ignored. To change that, set the threshold in
 milliseconds anywhere in your fish config:

@@ -73,26 +73,29 @@ func ShellCommand(shell, root string) []string {
 	return []string{shell}
 }
 
-// NotifyArgs builds the terminal-notifier invocation for a finished command.
+// NotifyArgs builds the `herdr notification show` invocation for a finished
+// command.
 //
-// The icon is set with -appIcon rather than -sender. -sender asks
-// terminal-notifier to post as another application, which relies on a private
-// bundle-id API macOS no longer honours — the notification simply never
-// arrives. -appIcon is the supported way to show the host terminal's face.
+// herdr is asked to post it rather than a notifier binary, because macOS binds
+// a notification to the bundle that actually posts it. herdr hands the request
+// to the terminal it is attached to, so the notification arrives as that
+// terminal — its icon, its name, and a click that focuses it. terminal-notifier
+// cannot reach that: -sender needs a private API macOS no longer honours,
+// -appIcon is ignored, and -contentImage only attaches a thumbnail beside a
+// notification still labelled terminal-notifier.
 //
-// An empty icon drops the flag: terminal-notifier rejects the invocation
-// outright if -appIcon is given without a value.
-func NotifyArgs(subtitle, message, icon string) []string {
-	args := []string{
-		"-title", "scratch",
-		"-subtitle", subtitle,
-		"-message", message,
-		"-group", "herdr-scratch",
+// It also means delivery follows whatever the user set in herdr — a desktop
+// notification, an in-app toast, or nothing — instead of this plugin deciding.
+func NotifyArgs(command, outcome string) []string {
+	title := command
+	if title == "" {
+		title = "scratch shell"
 	}
-	if icon != "" {
-		args = append(args, "-appIcon", icon)
+	body := outcome
+	if command != "" {
+		body = "scratch shell · " + outcome
 	}
-	return args
+	return []string{"notification", "show", title, "--body", body}
 }
 
 // DetachArgs builds the tmux command that closes the popup.

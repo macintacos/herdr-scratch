@@ -86,31 +86,25 @@ func TestShellCommandDefersToTmuxWhenShellIsUnset(t *testing.T) {
 	}
 }
 
-func TestNotifyArgsUsesAppIconForTheHostTerminal(t *testing.T) {
-	// -appIcon, not -sender: -sender relies on a private bundle-id spoofing API
-	// that macOS has closed off, and a notification posted that way never
-	// arrives at all.
-	got := NotifyArgs("npm run dev", "finished after 8s", "/Applications/Ghostty.app/Contents/Resources/Ghostty.icns")
-	want := []string{
-		"-title", "scratch",
-		"-subtitle", "npm run dev",
-		"-message", "finished after 8s",
-		"-group", "herdr-scratch",
-		"-appIcon", "/Applications/Ghostty.app/Contents/Resources/Ghostty.icns",
-	}
+func TestNotifyArgsAsksHerdrToPostTheNotification(t *testing.T) {
+	// herdr posts through the terminal it is attached to, so the notification
+	// arrives as that terminal — its icon, its name, and a click that focuses
+	// it. terminal-notifier cannot do that: macOS binds a notification to the
+	// bundle that actually posts it, so -sender, -appIcon and -contentImage all
+	// leave the sender showing as terminal-notifier.
+	got := NotifyArgs("npm run dev", "finished after 8s")
+	want := []string{"notification", "show", "npm run dev", "--body", "scratch shell · finished after 8s"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("NotifyArgs() = %#v, want %#v", got, want)
 	}
 }
 
-func TestNotifyArgsOmitsIconWhenItCannotBeResolved(t *testing.T) {
-	// Passing -appIcon with an empty value makes terminal-notifier reject the
-	// whole invocation, so an unresolved icon has to drop the flag entirely.
-	got := NotifyArgs("build", "done", "")
-	for _, arg := range got {
-		if arg == "-appIcon" {
-			t.Fatalf("NotifyArgs() included -appIcon with no icon: %#v", got)
-		}
+func TestNotifyArgsKeepsATitleWhenTheCommandIsUnknown(t *testing.T) {
+	// A notification whose title is empty renders as a blank line, and herdr
+	// takes the title as a positional argument, so it cannot simply be dropped.
+	got := NotifyArgs("", "finished after 8s")
+	if got[2] != "scratch shell" {
+		t.Errorf("NotifyArgs() title = %q, want %q", got[2], "scratch shell")
 	}
 }
 
