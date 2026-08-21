@@ -281,6 +281,17 @@ matters; `rm` it when it does.
 your own config, which never fires — `default` is what fish calls vi's normal mode, and
 `normal` names a mode fish never enters. Use `-M default`.
 
+**No notification when a command finishes out of sight.** Most likely another
+`fish_postexec` handler in your own config runs first and blocks. `done` is the common
+one: it shells out to `terminal-notifier`, which hangs inside a popup, and fish runs
+postexec handlers in order — so it starves this one and freezes the popup's prompt with
+it. `functions -q __done_ended` inside the popup tells you whether it is loaded.
+
+Everything else is visible from the outside: `herdr notification show test --body test`
+proves delivery works on its own, and a plugin has no fallback if it does not — herdr does
+not pass a raw OSC through from a pane, so asking herdr to post is the only route to a
+notification wearing your terminal's icon.
+
 **Reopening gives a blank screen or a fresh prompt.** Whatever is running the session is not
 tmux. Check the `command` in `herdr-plugin.toml`.
 
