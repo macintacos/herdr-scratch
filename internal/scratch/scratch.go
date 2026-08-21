@@ -162,9 +162,16 @@ func StableRoot(lookup func(string) string, home string) string {
 // can read, so a file is the only place a record survives. State rather than
 // data, hence .local/state and not the .local/share that StableRoot uses.
 //
+// HERDR_PLUGIN_STATE_DIR is herdr's answer to the same question, already scoped
+// to this plugin, so the log goes straight into it. The XDG tiers below it stay
+// for the invocations herdr is not making — `link`, and a binary run by hand.
+//
 // lookup is the environment reader and home the fallback base, both injected so
 // this stays testable.
 func LogPath(lookup func(string) string, home string) string {
+	if dir := lookup("HERDR_PLUGIN_STATE_DIR"); dir != "" {
+		return filepath.Join(dir, "herdr-scratch.log")
+	}
 	dir := lookup("XDG_STATE_HOME")
 	if dir == "" {
 		dir = filepath.Join(home, ".local", "state")

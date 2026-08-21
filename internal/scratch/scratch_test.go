@@ -297,3 +297,144 @@ func TestPaneTargetAsksTmuxForAPaneNotASession(t *testing.T) {
 		t.Errorf("PaneTarget() = %q, want %q", got, "=wD:")
 	}
 }
+
+func TestLoadConfigFallsBackToDefaultsWhenThereIsNoFile(t *testing.T) {
+	// The common case: nobody has written a config.toml, and the caller hands
+	// over the empty read of a file that is not there. A keypress still has to
+	// come away with a usable answer.
+	got, err := LoadConfig(nil)
+	if err != nil {
+		t.Errorf("LoadConfig(nil) error = %v, want nil", err)
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig(nil) = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigFallsBackWhenTheFileCannotBeParsed(t *testing.T) {
+	// A half-typed config must not take the popup down with it. The error is
+	// reported for the log, and the Config returned beside it is still usable.
+	got, err := LoadConfig([]byte("dismiss = [[[\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a parse failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigKeepsDefaultsForKeysTheFileOmits(t *testing.T) {
+	// Setting one thing must not silently unset the rest, so the decode starts
+	// from the defaults rather than from a zero Config.
+	got, err := LoadConfig([]byte("notify_after = 500\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.NotifyAfter != 500 {
+		t.Errorf("NotifyAfter = %d, want 500", got.NotifyAfter)
+	}
+	if got.Dismiss != DefaultConfig().Dismiss {
+		t.Errorf("Dismiss = %q, want the default %q", got.Dismiss, DefaultConfig().Dismiss)
+	}
+}
+
+func TestLoadConfigReadsEveryKey(t *testing.T) {
+	got, err := LoadConfig([]byte(
+		"dismiss = \"C-a ;\"\nnotify_after = 2000\nwidth = \"80%\"\nheight = \"50%\"\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	want := Config{Dismiss: "C-a ;", NotifyAfter: 2000, Width: "80%", Height: "50%"}
+	if got != want {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadConfigAcceptsASizeInCells(t *testing.T) {
+	// herdr's PopupSize is an integer of terminal cells or a percentage
+	// string, so TOML's own integer has to land in the same field as "70%".
+	got, err := LoadConfig([]byte("width = 80\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.Width != "80" {
+		t.Errorf("Width = %q, want %q", got.Width, "80")
+	}
+}
+
+func TestLoadConfigRejectsAChordThatIsNotTwoKeys(t *testing.T) {
+	// The rule DismissKeys already enforces, applied at load time so the
+	// message names the config file — rather than surfacing later as a popup
+	// with no way out of it.
+	got, err := LoadConfig([]byte("dismiss = \"C-b\"\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a validation failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsANegativeThreshold(t *testing.T) {
+	// A negative threshold notifies on every command, which reads as the
+	// plugin being broken rather than as the config being wrong.
+	got, err := LoadConfig([]byte("notify_after = -1\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a validation failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsASizeHerdrWouldRefuse(t *testing.T) {
+	// herdr's own schema caps a percentage at 100% and an integer at 65535.
+	// Catching it here turns a pane open herdr rejects into a readable line in
+	// the log, and leaves the shipped default in place meanwhile.
+	for _, size := range []string{"120%", "0%", "70 %", "70000", "wide"} {
+		got, err := LoadConfig([]byte("width = \"" + size + "\"\n"))
+		if err == nil {
+			t.Errorf("LoadConfig(width = %q) error = nil, want a validation failure", size)
+		}
+		if got != DefaultConfig() {
+			t.Errorf("LoadConfig(width = %q) = %#v, want %#v", size, got, DefaultConfig())
+		}
+	}
+}
+
+func TestConfigPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
+	// herdr sets HERDR_PLUGIN_CONFIG_DIR on every plugin command, which is the
+	// point of it: the plugin never has to work out where its config lives.
+	env := map[string]string{"HERDR_PLUGIN_CONFIG_DIR": "/herdr/config/user.scratch"}
+	got := ConfigPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/herdr/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestConfigPathFallsBackToXDGConfigHome(t *testing.T) {
+	// `herdr-scratch link` and a binary run by hand get none of the HERDR_
+	// variables, and still have to name the same file the popup will read.
+	env := map[string]string{"XDG_CONFIG_HOME": "/xdg"}
+	got := ConfigPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/xdg/herdr/plugins/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestConfigPathFallsBackToTheXDGDefault(t *testing.T) {
+	got := ConfigPath(func(string) string { return "" }, "/home/me")
+	if want := "/home/me/.config/herdr/plugins/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestLogPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
+	// herdr hands every plugin a state directory already scoped to it, so the
+	// log goes straight in rather than under a second herdr-scratch level.
+	env := map[string]string{"HERDR_PLUGIN_STATE_DIR": "/herdr/state/user.scratch"}
+	got := LogPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/herdr/state/user.scratch/herdr-scratch.log"; got != want {
+		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+}
