@@ -1,6 +1,7 @@
 package scratch
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -437,5 +438,87 @@ func TestLogPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
 	got := LogPath(func(k string) string { return env[k] }, "/home/me")
 	if want := "/herdr/state/user.scratch/herdr-scratch.log"; got != want {
 		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+}
+
+func TestManifestSettingsReadsTheSizeOffTheShippedManifest(t *testing.T) {
+	// The manifest link is about to replace is the one the user may have edited,
+	// and the shipped file is the yardstick it gets compared against — so the
+	// real thing, not a fixture, has to be readable by this.
+	data, err := os.ReadFile("../../herdr-plugin.toml")
+	if err != nil {
+		t.Fatalf("reading the shipped manifest: %v", err)
+	}
+	got := ManifestSettings(data)
+	want := Config{Width: "70%", Height: "70%"}
+	if got != want {
+		t.Errorf("ManifestSettings(shipped) = %#v, want %#v", got, want)
+	}
+}
+
+func TestManifestSettingsReadsTheChordOutOfThePaneCommand(t *testing.T) {
+	// The chord was never a key of its own: it was a --dismiss flag inside the
+	// pane's shell string, quoted because it is two keys with a space between
+	// them. That is the spelling every manifest written before config.toml has.
+	data := []byte(`
+[[panes]]
+id      = "scratch"
+width   = "80%"
+height  = "50%"
+command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+`)
+	got := ManifestSettings(data)
+	want := Config{Dismiss: "C-b '", Width: "80%", Height: "50%"}
+	if got != want {
+		t.Errorf("ManifestSettings() = %#v, want %#v", got, want)
+	}
+}
+
+func TestManifestSettingsIgnoresAManifestItCannotParse(t *testing.T) {
+	// Nothing to migrate is a better answer than a wrong migration notice: the
+	// manifest is being overwritten either way, and a guess printed as a config
+	// line is one the user would paste.
+	if got := ManifestSettings([]byte("[[panes\n")); got != (Config{}) {
+		t.Errorf("ManifestSettings(garbage) = %#v, want the zero Config", got)
+	}
+}
+
+func TestManifestSettingsReportsNothingForAManifestWithNoPane(t *testing.T) {
+	// Valid TOML carrying none of the settings this looks for — an old manifest
+	// trimmed down, or a file that is not a manifest at all.
+	if got := ManifestSettings([]byte("id = \"user.scratch\"\n")); got != (Config{}) {
+		t.Errorf("ManifestSettings() = %#v, want the zero Config", got)
+	}
+}
+
+func TestMigratedSettingsSaysNothingAboutAnUntouchedManifest(t *testing.T) {
+	// The common upgrade, and the one that must stay quiet: a manifest nobody
+	// edited names the same chord and the same size the plugin is about to use
+	// anyway. The chord is the trap — the shipped manifest no longer carries
+	// one, so comparing the two files directly reports every install there is.
+	had := Config{Dismiss: "C-b '", Width: "70%", Height: "70%"}
+	shipped := Config{Width: "70%", Height: "70%"}
+	if got := MigratedSettings(had, shipped); got != nil {
+		t.Errorf("MigratedSettings(untouched) = %#v, want nothing to carry over", got)
+	}
+}
+
+func TestMigratedSettingsNamesWhatTheUserChanged(t *testing.T) {
+	had := Config{Dismiss: "C-a ;", Width: "90%", Height: "70%"}
+	shipped := Config{Width: "70%", Height: "70%"}
+	got := MigratedSettings(had, shipped)
+	want := []string{`dismiss = "C-a ;"`, `width = "90%"`}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MigratedSettings() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMigratedSettingsSaysNothingWhenThereWasNoManifest(t *testing.T) {
+	// A first install: nothing was in place, so ManifestSettings reported the
+	// zero Config. An empty value is a setting that manifest never had — not a
+	// setting to move, and certainly not `width = ""`.
+	shipped := Config{Width: "70%", Height: "70%"}
+	if got := MigratedSettings(Config{}, shipped); got != nil {
+		t.Errorf("MigratedSettings(nothing) = %#v, want nothing to carry over", got)
 	}
 }

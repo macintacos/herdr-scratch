@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
@@ -19,8 +20,6 @@ const manifest = "herdr-plugin.toml"
 // linked are the entries symlinked back into the build: the binary, the tmux
 // config it starts the session with, and the shell integration it sources.
 var linked = []string{"bin", "tmux.conf", "shell"}
-
-var linkForce bool
 
 var linkCmd = &cobra.Command{
 	Use:   "link",
@@ -37,8 +36,9 @@ the rest symlinked at opt/herdr-scratch, the path Homebrew re-points at whatever
 version is current. herdr resolves to a directory that never moves, and the
 symlinks under it always reach the build that is installed now.
 
-The manifest is left alone once it exists, because it is also where popup size
-is configured. Use --force to take a newer release's version of it.`,
+The manifest is the plugin's, so every run installs this release's copy of it.
+The settings you own live in config.toml instead, which this never writes to —
+it only points out anything an older manifest was still carrying.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		source, err := buildRoot()
@@ -68,19 +68,19 @@ is configured. Use --force to take a newer release's version of it.`,
 		}
 
 		dst := filepath.Join(root, manifest)
-		if _, err := os.Stat(dst); err == nil && !linkForce {
-			fmt.Fprintf(cmd.OutOrStdout(), "kept the %s already here (--force to replace it)\n", manifest)
-		} else {
-			data, err := os.ReadFile(filepath.Join(source, manifest))
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(dst, data, 0o644); err != nil {
-				return err
-			}
+		shipped, err := os.ReadFile(filepath.Join(source, manifest))
+		if err != nil {
+			return err
+		}
+		// Read the one being replaced first: a manifest written before
+		// config.toml existed is the last copy of whatever the user set in it.
+		inPlace, _ := os.ReadFile(dst)
+		carry := scratch.MigratedSettings(scratch.ManifestSettings(inPlace), scratch.ManifestSettings(shipped))
+		if err := os.WriteFile(dst, shipped, 0o644); err != nil {
+			return err
 		}
 
-		slog.Info("linking", "source", source, "root", root, "force", linkForce)
+		slog.Info("linking", "source", source, "root", root)
 
 		register := exec.Command(herdrBin(), "plugin", "link", root)
 		register.Stderr = os.Stderr
@@ -89,6 +89,11 @@ is configured. Use --force to take a newer release's version of it.`,
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "linked %s -> %s\n", root, source)
+		if len(carry) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"\nthe %s replaced here had settings of its own. They live in\n%s now:\n\n%s\n",
+				manifest, scratch.ConfigPath(os.Getenv, home), strings.Join(carry, "\n"))
+		}
 		return nil
 	},
 }
@@ -112,7 +117,5 @@ func buildRoot() (string, error) {
 }
 
 func init() {
-	linkCmd.Flags().BoolVar(&linkForce, "force", false,
-		"replace the manifest already in place with this build's")
 	rootCmd.AddCommand(linkCmd)
 }
