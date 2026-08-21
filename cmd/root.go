@@ -20,7 +20,7 @@ const tmuxSocket = "herdr-scratch"
 var rootCmd = &cobra.Command{
 	Use:   "herdr-scratch",
 	Short: "A scratch shell for herdr, in a popup you toggle with one chord",
-	Long: `herdr-scratch backs a herdr popup with a per-pane tmux session.
+	Long: `herdr-scratch backs a herdr popup with a tmux session per space.
 
 Each subcommand is invoked by a different part of herdr: toggle by a keybinding,
 popup by the plugin pane itself, dismiss and notify by the shell integration
@@ -34,13 +34,17 @@ running inside the popup.`,
 // logCloser holds the open log file so Execute can flush it on the way out.
 var logCloser io.Closer
 
-// Execute runs the CLI, reporting a failure as one line on stderr rather than
+// Execute runs the CLI with the version it was built as, reporting a failure as one line on stderr rather than
 // cobra's default usage dump — these run from keypresses and prompt hooks.
 //
 // The failure is logged as well as printed. Most of these processes have no
 // stderr anyone will ever read: a keybinding's goes to herdr, and popup's is
 // inside a popup that is about to close.
-func Execute() {
+func Execute(version string) {
+	rootCmd.Version = version
+	// Just the number: this gets read by scripts and compared against
+	// `brew info` far more often than it gets read as a sentence.
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 	err := rootCmd.Execute()
 	if err != nil {
 		slog.Error("command failed", "err", err)
