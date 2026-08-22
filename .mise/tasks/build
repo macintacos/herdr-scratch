@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Build the plugin binary into bin/"
+
+set -euo pipefail
+
+# The same command herdr-plugin.toml's [[build]] runs at install time. A linked
+# local checkout needs it run by hand, because `herdr plugin link` does not build.
+go build -o bin/herdr-scratch .

@@ -1,0 +1,6 @@
+# Taplo (TOML) formatter config. `align_entries` lines up the `=` within each
+# table so entries read as columns — which is how herdr-plugin.toml and mise.toml
+# are already written by hand.
+# https://taplo.tamasfe.dev/configuration/formatter-options.html
+[formatting]
+align_entries = true

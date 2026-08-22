@@ -1,0 +1,66 @@
+# golangci-lint v2 — lints via `run`, formats via `fmt`. hk drives both.
+# https://golangci-lint.run/
+version: "2"
+linters:
+  enable:
+    # Extras
+    - errname
+    - exhaustive
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - tagalign
+    # Defaults (https://golangci-lint.run/usage/linters/#enabled-by-default)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    #
+    # Deliberately not enabled:
+    #
+    # noinlineerr bans `if err := f(); err != nil`, which is the most common
+    # idiom in Go and the one this codebase is written in throughout.
+    #
+    # nonamedreturns bans named results outright. DismissKeys returns
+    # (lead, key string, ok bool), where the names are what tell you which
+    # string is which; it never uses a naked return, which is the thing that
+    # rule actually exists to prevent.
+  exclusions:
+    rules:
+      # This plugin's whole job is to drive tmux and herdr as subprocesses and
+      # to own files under the user's XDG directories, so these fire constantly
+      # on code doing exactly what it is meant to do:
+      #   G204/G702  subprocess launched with a variable, and taint reaching it —
+      #              the binary is always a literal and exec.Command passes an
+      #              argv array with no shell between it and the process, so the
+      #              worst an argument can be is one tmux rejects. What "taints"
+      #              it is the user's own workspace id and their own chord.
+      #   G301/G302/G306  directory and file modes — 0755/0644 is the convention
+      #                   for the XDG dirs herdr also reads
+      #   G304  file opened via a variable path — the config and log paths are
+      #         computed, which is the point of ConfigPath and LogPath
+      # Everything else gosec checks (hardcoded credentials, weak crypto, …)
+      # stays on.
+      - linters: [gosec]
+        text: "G204|G301|G302|G304|G306|G702"
+      # cobra fixes the RunE signature, so an unused `cmd` or `args` is the
+      # framework's shape rather than dead code.
+      - linters: [revive]
+        text: "unused-parameter"
+formatters:
+  # golines is deliberately absent. It splits every argument of an over-long
+  # call onto its own line, which breaks up the "key", value pairs that every
+  # slog call here depends on being able to read as pairs.
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: github.com/macintacos/herdr-scratch
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/macintacos/herdr-scratch

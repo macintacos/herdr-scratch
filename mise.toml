@@ -1,0 +1,32 @@
+[settings]
+# Commit mise.lock for reproducible, checksum-pinned tool versions.
+lockfile = true
+
+# HK_MISE routes hk's git-hook subprocesses through `mise x`, so each hook step
+# uses the versions pinned below — even for committers who never activated mise.
+[env]
+HK_MISE = 1
+
+[tools]
+# hk evaluates hk.pkl through pkl, so both are required. pkl also powers the
+# Pkl(Format) / Pkl(Lint) steps (`pkl format` and `pkl eval`).
+hk  = "1.56.0" # keep in lockstep with hk.pkl's amends/import
+pkl = "latest"
+
+# The cross-language baseline.
+"aqua:google/yamlfmt" = "latest" # YAML format
+taplo                 = "latest" # TOML format + lint (config in taplo.toml)
+shellcheck            = "latest" # Shell lint
+shfmt                 = "latest" # Shell format
+rumdl                 = "latest" # Markdown lint + format (config in .rumdl.toml)
+
+# Go. golangci-lint v2 both lints (`run`) and formats (`fmt`, via gofumpt /
+# goimports / golines), and runs outside the module, so it belongs here rather
+# than in go.mod. Pinned: a new release changing a linter's opinions should be
+# something we take deliberately, not something a fresh install hands us.
+go            = "latest"
+golangci-lint = "2.13.1"
+
+# (Re)register git hooks whenever tools are installed or updated.
+[hooks]
+postinstall = "hk install --mise"
