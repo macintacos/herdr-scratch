@@ -1,0 +1,33 @@
+# rumdl lints AND formats Markdown: `rumdl check` lints, `rumdl fmt` formats, and
+# hk drives both. https://rumdl.dev
+[global]
+# MD033 (inline HTML) is off because the README uses <kbd> for keys and <details>
+# for the collapsed install section. MD034 (bare URLs) off to match.
+disable = ["MD033", "MD034"]
+
+# Respect .gitignore when scanning directories.
+respect-gitignore = true
+
+exclude = [
+  ".git",
+  ".github",
+  "node_modules",
+  "vendor",
+  "dist",
+  "build",
+  "CHANGELOG.md",
+  "LICENSE.md",
+]
+
+[MD024]
+# Only flag duplicate headings that are siblings, not across the whole document.
+siblings-only = true
+
+[MD013]
+# Reflow holds prose to the line length, but code blocks and the image alt text
+# can't be wrapped to fit — exempt them so they don't fail an otherwise-clean file.
+line-length = 90
+reflow      = true
+reflow-mode = "normalize"
+code-spans  = false
+code-blocks = false

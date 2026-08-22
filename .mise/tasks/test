@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Run the test suite"
+#USAGE arg "[pkg]" help="Package pattern to test (default ./...)"
+#USAGE flag "-r --run <regexp>" help="Only run tests matching regexp"
+
+set -euo pipefail
+
+pkg="${usage_pkg:-./...}"
+
+# `go test internal/scratch` looks for a package of that name in the standard
+# library and fails confusingly. A directory that really exists gets the ./
+# prefix it needs; anything else — ./..., a full import path — passes through.
+if [ -d "$pkg" ]; then
+	pkg="./${pkg#./}"
+fi
+
+if [ -n "${usage_run:-}" ]; then
+	go test "$pkg" -run "${usage_run}"
+else
+	go test "$pkg"
+fi

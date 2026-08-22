@@ -30,8 +30,8 @@ placement = "popup"
 # The default size, applied to an open request that names none. Override it in
 # config.toml rather than here: this file is the plugin's, and every release
 # ships a new one over the top of it.
-width     = "70%"
-height    = "70%"
+width  = "70%"
+height = "70%"
 #
 # Wrapped in sh, and absolute via $HERDR_PLUGIN_ROOT, because a *pane* command's
 # relative path is resolved against the herdr server's working directory rather
@@ -41,7 +41,11 @@ height    = "70%"
 # No --dismiss here on purpose. The chord lives in config.toml, and a flag on
 # this line would beat it every time — which is exactly the drift that moving
 # settings out of this file was meant to end.
-command   = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup"]
+command = [
+  "/bin/sh",
+  "-c",
+  "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup",
+]
 
 # A scratch shell belongs to its space, and outlives every pane in it — so
 # nothing else is left to end it. Without this the session would sit on the tmux

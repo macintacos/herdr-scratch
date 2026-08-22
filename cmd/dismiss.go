@@ -7,8 +7,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 var dismissCmd = &cobra.Command{

@@ -86,8 +86,10 @@ func ShellCommand(shell, root string) []string {
 		return nil
 	}
 	if filepath.Base(shell) == "fish" {
-		return []string{shell, "--init-command",
-			"source " + filepath.Join(root, "shell", "herdr-scratch.fish")}
+		return []string{
+			shell, "--init-command",
+			"source " + filepath.Join(root, "shell", "herdr-scratch.fish"),
+		}
 	}
 	return []string{shell}
 }
@@ -241,7 +243,8 @@ func CreateArgs(exists bool, config, session, shell, root string, notifyAfter in
 	if exists {
 		return nil
 	}
-	create := []string{"-f", config, "new-session", "-d", "-s", session,
+	create := []string{
+		"-f", config, "new-session", "-d", "-s", session,
 		// On the session, because the shell is spawned by the tmux server and
 		// inherits its environment — not the environment of the client that
 		// attaches afterwards. Exporting these around the attach reaches the

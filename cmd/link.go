@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 // manifest is the one file the stable directory owns outright. Everything
@@ -99,9 +100,11 @@ it only points out anything an older manifest was still carrying.`,
 			return err
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "linked %s -> %s\n", root, source)
+		// Ignored deliberately, as everywhere else in this package: a write to
+		// stdout that fails leaves nothing worth doing about it.
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "linked %s -> %s\n", root, source)
 		if len(carry) > 0 {
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"\nthe %s replaced here had settings of its own. Put them in\n%s:\n\n%s\n",
 				manifest, scratch.ConfigPath(os.Getenv, home), strings.Join(carry, "\n"))
 		}

@@ -6,8 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 // entrypoint is the pane the manifest declares; the plugin's own id lives in

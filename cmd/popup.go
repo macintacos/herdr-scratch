@@ -9,8 +9,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 var popupCmd = &cobra.Command{
