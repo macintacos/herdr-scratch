@@ -96,6 +96,11 @@ fish costs you no setup.
 `tmux -L herdr-scratch ls` lists your scratch shells, one per space. A shell ends when its
 space closes, or when you exit it — the next press then starts a fresh one.
 
+The mouse wheel scrolls the popup's own scrollback. copy-mode is the only viewport tmux
+has, so the first notch up enters it and scrolling back to the bottom leaves it again.
+Typing while scrolled up goes to copy-mode rather than the shell — <kbd>Enter</kbd> drops
+you back at the prompt.
+
 ### Check it works
 
 1. <kbd>prefix</kbd> + <kbd>'</kbd> → a bordered popup titled **scratch** opens, in the
