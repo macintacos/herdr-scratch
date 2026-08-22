@@ -4,8 +4,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 var notifyCmd = &cobra.Command{

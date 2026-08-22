@@ -10,8 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 // tmuxSocket keeps this server clear of any tmux the user runs themselves, and

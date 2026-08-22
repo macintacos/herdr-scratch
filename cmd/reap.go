@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
 var reapCmd = &cobra.Command{
