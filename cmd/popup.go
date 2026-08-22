@@ -39,9 +39,23 @@ keep no screen, so they can only hand back a bare prompt.`,
 			return fmt.Errorf("tmux is required but is not on PATH")
 		}
 
-		lead, key, ok := scratch.DismissKeys(dismissChord)
+		cfg := userConfig()
+
+		// A manifest written before the settings moved still passes --dismiss,
+		// and a flag that was given beats the file. Said out loud because the
+		// symptom otherwise is a config.toml edit that does nothing: herdr
+		// keeps the manifest it recorded until `link` replaces it, so an
+		// upgraded binary can still be reading a chord from an old one.
+		flagGiven := cmd.Flags().Changed("dismiss")
+		if flagGiven {
+			slog.Warn("--dismiss overrides dismiss in config.toml; re-run `herdr-scratch link` to install this release's manifest",
+				"chord", dismissChord)
+		}
+		chord := scratch.DismissChord(dismissChord, flagGiven, cfg)
+
+		lead, key, ok := scratch.DismissKeys(chord)
 		if !ok {
-			return fmt.Errorf("--dismiss wants two tmux keys, like %q, got %q", "C-b '", dismissChord)
+			return fmt.Errorf("the dismiss chord wants two tmux keys, like %q, got %q", "C-b '", chord)
 		}
 
 		config := filepath.Join(root, "tmux.conf")
@@ -53,7 +67,7 @@ keep no screen, so they can only hand back a bare prompt.`,
 		// the moment it starts.
 		exists := sessionExists(session)
 		slog.Debug("looked for the space's session", "session", session, "exists", exists)
-		if create := scratch.CreateArgs(exists, config, session, os.Getenv("SHELL"), root); create != nil {
+		if create := scratch.CreateArgs(exists, config, session, os.Getenv("SHELL"), root, cfg.NotifyAfter); create != nil {
 			if out, err := tmuxCmd(create...).CombinedOutput(); err != nil {
 				slog.Error("could not create the scratch session",
 					"session", session, "err", err, "output", strings.TrimSpace(string(out)))
@@ -85,11 +99,11 @@ keep no screen, so they can only hand back a bare prompt.`,
 			{"bind-key", "-T", dismissTable, leadArg, "send-keys", leadArg},
 		} {
 			if out, err := tmuxCmd(bind...).CombinedOutput(); err != nil {
-				slog.Error("could not bind the dismiss chord", "chord", dismissChord,
+				slog.Error("could not bind the dismiss chord", "chord", chord,
 					"bind", bind, "err", err, "output", strings.TrimSpace(string(out)))
 			}
 		}
-		slog.Debug("bound the dismiss chord", "chord", dismissChord, "lead", lead, "key", key)
+		slog.Debug("bound the dismiss chord", "chord", chord, "lead", lead, "key", key)
 
 		argv := []string{"tmux", "-L", tmuxSocket, "attach-session", "-t", scratch.Target(session)}
 
@@ -120,12 +134,12 @@ func sessionExists(session string) bool {
 // dismissTable is the one-key tmux key table the lead key switches into.
 const dismissTable = "scratch"
 
-// dismissChord defaults to herdr's own default prefix and the binding the README
-// suggests, so the common setup needs no argument at all.
+// dismissChord holds --dismiss, which the shipped manifest does not pass: the
+// chord comes from config.toml, and this overrides it.
 var dismissChord string
 
 func init() {
-	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "C-b '",
-		"the two tmux keys that close the popup, matching the chord that opens it")
+	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "",
+		"the two tmux keys that close the popup; overrides dismiss in config.toml")
 	rootCmd.AddCommand(popupCmd)
 }

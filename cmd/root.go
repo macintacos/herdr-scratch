@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/macintacos/herdr-scratch/internal/scratch"
 	"github.com/spf13/cobra"
 )
 
@@ -87,6 +88,37 @@ func herdrBin() string {
 		return herdr
 	}
 	return "herdr"
+}
+
+// userConfig is the settings the user owns, or the defaults when there is
+// nothing to read them from.
+//
+// Never fails: the file is optional, and every caller here is a keypress. A
+// config that cannot be read or does not validate is logged and replaced with
+// the defaults, because a popup that opens with the wrong chord still beats a
+// popup that does not open.
+func userConfig() scratch.Config {
+	// A missing home directory is not fatal here: it only feeds ConfigPath's
+	// last tier, and HERDR_PLUGIN_CONFIG_DIR — set on every command herdr runs,
+	// which is all of them that matter — is resolved before that tier is
+	// reached.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		slog.Warn("no home directory; only HERDR_PLUGIN_CONFIG_DIR can name the config", "err", err)
+	}
+
+	path := scratch.ConfigPath(os.Getenv, home)
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Error("could not read the config", "path", path, "err", err)
+	}
+
+	cfg, err := scratch.LoadConfig(data)
+	if err != nil {
+		slog.Error("using the built-in settings instead", "path", path, "err", err)
+	}
+	slog.Debug("read the config", "path", path, "config", cfg)
+	return cfg
 }
 
 func init() {

@@ -23,8 +23,15 @@ herdr-scratch link
 The formula brings herdr and tmux with it, and Go to build with, so there is nothing to
 install first.
 
-`link` is the only registration you ever do — `brew upgrade herdr-scratch` picks up the
+`link` is the only *registration* you ever do — `brew upgrade herdr-scratch` picks up the
 new build without it.
+
+> [!IMPORTANT]
+> Run `herdr-scratch link` again after upgrading to 0.5.0. herdr keeps the manifest in the
+> directory it recorded, and only `link` replaces it — so until you do, an older manifest
+> is still passing `--dismiss`, which overrides the `dismiss` you set in `config.toml` and
+> makes an edit there look like it did nothing. `link` prints anything it finds worth
+> keeping before it replaces the file.
 
 > [!NOTE]
 > Upgrading pulls herdr up with it, since the formula depends on herdr, and a herdr server
@@ -51,7 +58,7 @@ to somewhere that never moves, and what is under it always reaches the build you
 ### Without Homebrew
 
 You supply the dependencies yourself: herdr 0.8.0+ (`herdr --version` — earlier versions
-have no `plugin pane` command), tmux, and Go 1.24+ to build with.
+have no `plugin pane` command), tmux, and Go 1.25+ to build with.
 
 ```sh
 herdr plugin install macintacos/herdr-scratch
@@ -181,43 +188,66 @@ notification, an in-app toast, or off entirely — instead of this plugin decidi
 Most terminals suppress desktop notifications while they are focused, so expect these when
 you are in another app — which is when they are worth having.
 
-Commands shorter than 10 seconds are ignored. To change that, set the threshold in
-milliseconds anywhere in your fish config:
+Commands shorter than 10 seconds are ignored. To change that, set `notify_after` in
+milliseconds in [your config file](#configuring):
 
-```fish
-set -g herdr_scratch_notify_after 30000   # 30 seconds
+```toml
+notify_after = 30000   # 30 seconds
 ```
+
+A change here reaches the next scratch shell you *start*, not the next popup you open —
+the threshold rides onto the tmux session so the shell can check it after every command
+without asking this plugin. `tmux -L herdr-scratch kill-server` if you want it sooner.
+
+A `set -g herdr_scratch_notify_after 30000` in your fish config still works, and still
+wins over the file, so nothing you already have needs changing.
 
 ## Configuring
 
-The first two live in `herdr-plugin.toml`. `herdr plugin list` prints the directory holding
-the copy in force; a Homebrew install puts it at
-`~/.local/share/herdr-scratch/herdr-plugin.toml`. That copy is yours — `herdr-scratch link`
-leaves it alone from then on, so an edit here outlives every upgrade. To take a newer
-release's version of it instead, `herdr-scratch link --force`.
+Everything you can set lives in one file:
 
-Nothing needs reloading after an edit. herdr re-reads the manifest every time it runs one
-of the plugin's commands, so the next popup you open is already using it.
-
-**The dismiss chord** — the `--dismiss` argument on the pane command, in tmux's key
-syntax. It has to name the same chord that *opens* the popup, and the default assumes
-herdr's default prefix with the binding above:
-
-```toml
-command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+```sh
+~/.config/herdr/plugins/config/user.scratch/config.toml
 ```
 
-If your herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something other than
-<kbd>'</kbd>, change this to match — `"C-a ;"` for <kbd>Ctrl</kbd> + <kbd>A</kbd> then
+It does not exist until you create it, and `herdr plugin config-dir user.scratch` prints
+the directory it goes in — worth running first if your settings are not being picked up.
+
+| key | what it sets | format | default |
+| --- | --- | --- | --- |
+| `dismiss` | the chord that closes the popup | two tmux keys, separated by a space | `"C-b '"` |
+| `notify_after` | how long a command must run before it notifies | milliseconds | `10000` |
+| `width` | how wide the popup opens | terminal cells as a number, or a percentage string | `"70%"` |
+| `height` | how tall it opens | the same | `"70%"` |
+
+Set only what you are changing — a key you leave out keeps its default:
+
+```toml
+dismiss = "C-a ;"
+width   = "80%"
+```
+
+A file this cannot read is ignored in favour of the defaults rather than breaking the
+popup, and so is a key it does not recognise — a `dismis` typo is reported by name in the
+[log](#troubleshooting) instead of quietly doing nothing.
+
+> [!NOTE]
+> `herdr-plugin.toml` is **not** where settings go. It is the plugin's own manifest, and
+> `herdr-scratch link` installs each release's copy over the top of yours — which is what
+> lets a release change it at all. If you had edited one, `link` prints the lines to paste
+> here. Until you re-run `link`, a `--dismiss` still sitting on your pane command keeps
+> winning over the file, so the popup carries on answering the chord it always did.
+
+**`dismiss` is the one worth reading twice.** It has to name the same chord that *opens*
+the popup, and the default assumes herdr's default prefix with the binding above. If your
+herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something other than
+<kbd>'</kbd>, change it to match — `"C-a ;"` for <kbd>Ctrl</kbd> + <kbd>A</kbd> then
 <kbd>;</kbd>. Nothing can work it out for you: herdr has no way to report its prefix, and
 the popup has to be told before it opens.
 
 The new chord works on the next open. The old one keeps working alongside it until the
 scratch tmux server exits, since tmux holds the binding rather than this plugin — end it
 with `tmux -L herdr-scratch kill-server` if that bothers you.
-
-**Size** — `width` and `height`. Terminal cells as numbers, or a
-percentage string like `"70%"`. Omit both for herdr's default half-size popup.
 
 **Sessions** — `tmux -L herdr-scratch ls` lists them, one per space you have used it in.
 
@@ -234,10 +264,12 @@ next press starts a fresh one.
 tmux -L herdr-scratch kill-server     # stop every scratch shell
 herdr plugin unlink user.scratch      # or: herdr plugin uninstall user.scratch
 rm -rf ~/.local/share/herdr-scratch   # what `herdr-scratch link` created
+rm -rf ~/.config/herdr/plugins/config/user.scratch   # your settings
 brew uninstall herdr-scratch          # if you installed it that way
 ```
 
-Then delete the `[[keys.command]]` block from `config.toml` and `herdr server reload-config`.
+Then delete the `[[keys.command]]` block from herdr's own `~/.config/herdr/config.toml`
+and `herdr server reload-config`.
 
 ## Troubleshooting
 
@@ -262,8 +294,13 @@ shell was not started by the plugin, so close it and open a fresh popup.
 because a keybinding's stderr goes to herdr and a popup's is inside a popup that is closing:
 
 ```sh
-tail -f ~/.local/state/herdr-scratch/herdr-scratch.log
+tail -f ~/.local/state/herdr/plugins/user.scratch/herdr-scratch.log
 ```
+
+That is where herdr keeps this plugin's state, so it holds everything herdr invokes — the
+keypresses, the popup, the notifications. `herdr-scratch link`, which you run yourself,
+writes to `~/.local/state/herdr-scratch/herdr-scratch.log` instead — that is the one to
+read when settings did not survive an upgrade.
 
 Readable lines by default, JSON with `--debug`, which also turns on the debug records —
 the space the chord fired from, what tmux said about its session, and the exact
@@ -273,6 +310,9 @@ action's command in `herdr-plugin.toml`:
 ```toml
 command = ["./bin/herdr-scratch", "--debug", "toggle"]
 ```
+
+That is a debugging edit rather than a setting, and the next `herdr-scratch link` writes
+the shipped manifest back over it — put it back if you are still chasing something.
 
 Nothing rotates the file. It gets a few lines per press, so it is a long while before that
 matters; `rm` it when it does.

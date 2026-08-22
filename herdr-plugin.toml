@@ -1,6 +1,6 @@
 id                = "user.scratch"
 name              = "Scratch Shell"
-version           = "0.4.3"
+version           = "0.5.0"
 min_herdr_version = "0.8.0"
 description       = "A scratch shell popup that detaches instead of closing"
 platforms         = ["macos", "linux"]
@@ -27,6 +27,9 @@ command = ["go", "build", "-o", "bin/herdr-scratch", "."]
 id        = "scratch"
 title     = "scratch"
 placement = "popup"
+# The default size, applied to an open request that names none. Override it in
+# config.toml rather than here: this file is the plugin's, and every release
+# ships a new one over the top of it.
 width     = "70%"
 height    = "70%"
 #
@@ -35,13 +38,10 @@ height    = "70%"
 # than the plugin's. An action's is resolved against the plugin — hence the two
 # spellings below.
 #
-# --dismiss is the chord that closes the popup, in tmux's key syntax. It has to
-# be the same chord that opens it — the binding from config.toml with your herdr
-# prefix spelled out — because a popup takes every keypress and tmux is the only
-# layer left that can answer one. The default matches herdr's own default prefix
-# and the binding the README suggests; a prefix of ctrl+a bound to ";" would make
-# this "C-a ;".
-command   = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+# No --dismiss here on purpose. The chord lives in config.toml, and a flag on
+# this line would beat it every time — which is exactly the drift that moving
+# settings out of this file was meant to end.
+command   = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup"]
 
 # A scratch shell belongs to its space, and outlives every pane in it — so
 # nothing else is left to end it. Without this the session would sit on the tmux

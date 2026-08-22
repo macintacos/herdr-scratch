@@ -5,6 +5,7 @@ package scratch
 import (
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -162,9 +163,16 @@ func StableRoot(lookup func(string) string, home string) string {
 // can read, so a file is the only place a record survives. State rather than
 // data, hence .local/state and not the .local/share that StableRoot uses.
 //
+// HERDR_PLUGIN_STATE_DIR is herdr's answer to the same question, already scoped
+// to this plugin, so the log goes straight into it. The XDG tiers below it stay
+// for the invocations herdr is not making — `link`, and a binary run by hand.
+//
 // lookup is the environment reader and home the fallback base, both injected so
 // this stays testable.
 func LogPath(lookup func(string) string, home string) string {
+	if dir := lookup("HERDR_PLUGIN_STATE_DIR"); dir != "" {
+		return filepath.Join(dir, "herdr-scratch.log")
+	}
 	dir := lookup("XDG_STATE_HOME")
 	if dir == "" {
 		dir = filepath.Join(home, ".local", "state")
@@ -191,7 +199,7 @@ func SessionIsAttached(out string) bool {
 // It is a chord rather than a single key because it has to be the one that
 // opened the popup, and herdr's own is a prefix plus a key. Which prefix, and
 // which key, are the user's: the default here matches herdr's default, and
-// anything else is passed to popup from the manifest.
+// anything else comes from config.toml, or from --dismiss overriding it.
 //
 // Reported as not-ok unless it is exactly two keys. tmux would take a malformed
 // binding without complaint and leave the popup with no way out.
@@ -224,7 +232,12 @@ func TmuxKeyArg(key string) string {
 // terminal failed: not a terminal" and the popup exits before reaching the
 // attach it was going to do anyway. Asking first costs one has-session call and
 // makes creating and attaching two separate things, which is what they are.
-func CreateArgs(exists bool, config, session, shell, root string) []string {
+//
+// notifyAfter rides along for the same reason the other two do: the shell
+// integration compares it after every command, and asking the binary for it
+// each time would spawn a process per prompt. The cost is that changing it in
+// config.toml reaches the next session rather than the next popup.
+func CreateArgs(exists bool, config, session, shell, root string, notifyAfter int) []string {
 	if exists {
 		return nil
 	}
@@ -240,6 +253,7 @@ func CreateArgs(exists bool, config, session, shell, root string) []string {
 		// first space's values for every space after.
 		"-e", "HERDR_SCRATCH_POPUP=1",
 		"-e", "HERDR_SCRATCH_ROOT=" + root,
+		"-e", "HERDR_SCRATCH_NOTIFY_AFTER=" + strconv.Itoa(notifyAfter),
 	}
 	return append(create, ShellCommand(shell, root)...)
 }

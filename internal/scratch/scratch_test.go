@@ -1,6 +1,7 @@
 package scratch
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -248,11 +249,12 @@ func TestCreateArgsBuildsADetachedSessionWhenThereIsNone(t *testing.T) {
 	// these around the attach reaches the client and nothing else, so the shell
 	// integration, which does nothing unless it sees HERDR_SCRATCH_POPUP, would
 	// never load.
-	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root")
+	got := CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 2000)
 	want := []string{
 		"-f", "/root/tmux.conf", "new-session", "-d", "-s", "wD",
 		"-e", "HERDR_SCRATCH_POPUP=1",
 		"-e", "HERDR_SCRATCH_ROOT=/root",
+		"-e", "HERDR_SCRATCH_NOTIFY_AFTER=2000",
 		"/bin/zsh",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -265,7 +267,7 @@ func TestCreateArgsNeverAsksTmuxToAttach(t *testing.T) {
 	// attaching needs a terminal on stdout. This runs with its output captured,
 	// so tmux fails with "open terminal failed: not a terminal" and the popup
 	// dies before it ever gets to attach for real.
-	for _, arg := range CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root") {
+	for _, arg := range CreateArgs(false, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 10000) {
 		if arg == "-A" {
 			t.Fatalf("CreateArgs() passed -A, which attaches when the session exists")
 		}
@@ -275,7 +277,7 @@ func TestCreateArgsNeverAsksTmuxToAttach(t *testing.T) {
 func TestCreateArgsRunsNothingWhenTheSessionIsAlreadyUp(t *testing.T) {
 	// The second press of the chord, and every one after it: the session is
 	// there and the only thing left to do is attach to it.
-	if got := CreateArgs(true, "/root/tmux.conf", "wD", "/bin/zsh", "/root"); got != nil {
+	if got := CreateArgs(true, "/root/tmux.conf", "wD", "/bin/zsh", "/root", 10000); got != nil {
 		t.Errorf("CreateArgs() = %q, want nil", got)
 	}
 }
@@ -295,5 +297,322 @@ func TestPaneTargetAsksTmuxForAPaneNotASession(t *testing.T) {
 	// for a session that is. The trailing colon is what makes it a pane target.
 	if got := PaneTarget("wD"); got != "=wD:" {
 		t.Errorf("PaneTarget() = %q, want %q", got, "=wD:")
+	}
+}
+
+func TestLoadConfigFallsBackToDefaultsWhenThereIsNoFile(t *testing.T) {
+	// The common case: nobody has written a config.toml, and the caller hands
+	// over the empty read of a file that is not there. A keypress still has to
+	// come away with a usable answer.
+	got, err := LoadConfig(nil)
+	if err != nil {
+		t.Errorf("LoadConfig(nil) error = %v, want nil", err)
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig(nil) = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigFallsBackWhenTheFileCannotBeParsed(t *testing.T) {
+	// A half-typed config must not take the popup down with it. The error is
+	// reported for the log, and the Config returned beside it is still usable.
+	got, err := LoadConfig([]byte("dismiss = [[[\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a parse failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigKeepsDefaultsForKeysTheFileOmits(t *testing.T) {
+	// Setting one thing must not silently unset the rest, so the decode starts
+	// from the defaults rather than from a zero Config.
+	got, err := LoadConfig([]byte("notify_after = 500\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.NotifyAfter != 500 {
+		t.Errorf("NotifyAfter = %d, want 500", got.NotifyAfter)
+	}
+	if got.Dismiss != DefaultConfig().Dismiss {
+		t.Errorf("Dismiss = %q, want the default %q", got.Dismiss, DefaultConfig().Dismiss)
+	}
+}
+
+func TestLoadConfigReadsEveryKey(t *testing.T) {
+	got, err := LoadConfig([]byte(
+		"dismiss = \"C-a ;\"\nnotify_after = 2000\nwidth = \"80%\"\nheight = \"50%\"\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	want := Config{Dismiss: "C-a ;", NotifyAfter: 2000, Width: "80%", Height: "50%"}
+	if got != want {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadConfigAcceptsASizeInCells(t *testing.T) {
+	// herdr's PopupSize is an integer of terminal cells or a percentage
+	// string, so TOML's own integer has to land in the same field as "70%".
+	got, err := LoadConfig([]byte("width = 80\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.Width != "80" {
+		t.Errorf("Width = %q, want %q", got.Width, "80")
+	}
+}
+
+func TestLoadConfigRejectsAChordThatIsNotTwoKeys(t *testing.T) {
+	// The rule DismissKeys already enforces, applied at load time so the
+	// message names the config file — rather than surfacing later as a popup
+	// with no way out of it.
+	got, err := LoadConfig([]byte("dismiss = \"C-b\"\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a validation failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsANegativeThreshold(t *testing.T) {
+	// A negative threshold notifies on every command, which reads as the
+	// plugin being broken rather than as the config being wrong.
+	got, err := LoadConfig([]byte("notify_after = -1\n"))
+	if err == nil {
+		t.Error("LoadConfig() error = nil, want a validation failure")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig() = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsASizeHerdrWouldRefuse(t *testing.T) {
+	// herdr's own schema caps a percentage at 100% and an integer at 65535.
+	// Catching it here turns a pane open herdr rejects into a readable line in
+	// the log, and leaves the shipped default in place meanwhile.
+	for _, size := range []string{"120%", "0%", "70 %", "70000", "wide"} {
+		got, err := LoadConfig([]byte("width = \"" + size + "\"\n"))
+		if err == nil {
+			t.Errorf("LoadConfig(width = %q) error = nil, want a validation failure", size)
+		}
+		if got != DefaultConfig() {
+			t.Errorf("LoadConfig(width = %q) = %#v, want %#v", size, got, DefaultConfig())
+		}
+	}
+}
+
+func TestLoadConfigRejectsAKeyItDoesNotRecognise(t *testing.T) {
+	// A typo that decodes quietly is the failure this file exists to end: the
+	// user edits `dismis`, the popup keeps its old chord, and nothing anywhere
+	// says why. Reported instead, and the defaults stand.
+	got, err := LoadConfig([]byte("dismis = \"C-a ;\"\n"))
+	if err == nil {
+		t.Error("LoadConfig(typo) error = nil, want the unknown key reported")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig(typo) = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsASizeThatIsNotASize(t *testing.T) {
+	// A TOML integer is a size; a TOML boolean is not. Weak typing would turn
+	// `true` into "1" and open a one-cell popup without complaining.
+	if _, err := LoadConfig([]byte("width = true\n")); err == nil {
+		t.Error("LoadConfig(width = true) error = nil, want a decode failure")
+	}
+}
+
+func TestLoadConfigTreatsAnEmptyChordAsUnset(t *testing.T) {
+	// `dismiss = ""` has to reach DismissChord as "no chord set" so it falls
+	// through to the default, rather than validating as a chord or binding an
+	// empty one — which tmux would take, leaving a popup with no way out.
+	got, err := LoadConfig([]byte("dismiss = \"\"\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.Dismiss != "" {
+		t.Errorf("Dismiss = %q, want empty", got.Dismiss)
+	}
+	if chord := DismissChord("", false, got); chord != DefaultConfig().Dismiss {
+		t.Errorf("DismissChord() = %q, want the default %q", chord, DefaultConfig().Dismiss)
+	}
+}
+
+func TestConfigPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
+	// herdr sets HERDR_PLUGIN_CONFIG_DIR on every plugin command, which is the
+	// point of it: the plugin never has to work out where its config lives.
+	env := map[string]string{"HERDR_PLUGIN_CONFIG_DIR": "/herdr/config/user.scratch"}
+	got := ConfigPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/herdr/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestConfigPathFallsBackToXDGConfigHome(t *testing.T) {
+	// `herdr-scratch link` and a binary run by hand get none of the HERDR_
+	// variables, and still have to name the same file the popup will read.
+	env := map[string]string{"XDG_CONFIG_HOME": "/xdg"}
+	got := ConfigPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/xdg/herdr/plugins/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestConfigPathFallsBackToTheXDGDefault(t *testing.T) {
+	got := ConfigPath(func(string) string { return "" }, "/home/me")
+	if want := "/home/me/.config/herdr/plugins/config/user.scratch/config.toml"; got != want {
+		t.Errorf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestLogPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
+	// herdr hands every plugin a state directory already scoped to it, so the
+	// log goes straight in rather than under a second herdr-scratch level.
+	env := map[string]string{"HERDR_PLUGIN_STATE_DIR": "/herdr/state/user.scratch"}
+	got := LogPath(func(k string) string { return env[k] }, "/home/me")
+	if want := "/herdr/state/user.scratch/herdr-scratch.log"; got != want {
+		t.Errorf("LogPath() = %q, want %q", got, want)
+	}
+}
+
+func TestManifestSettingsReadsTheSizeOffTheShippedManifest(t *testing.T) {
+	// The manifest link is about to replace is the one the user may have edited,
+	// and the shipped file is the yardstick it gets compared against — so the
+	// real thing, not a fixture, has to be readable by this.
+	data, err := os.ReadFile("../../herdr-plugin.toml")
+	if err != nil {
+		t.Fatalf("reading the shipped manifest: %v", err)
+	}
+	got := ManifestSettings(data)
+	want := Config{Width: "70%", Height: "70%"}
+	if got != want {
+		t.Errorf("ManifestSettings(shipped) = %#v, want %#v", got, want)
+	}
+}
+
+func TestManifestSettingsReadsTheChordOutOfThePaneCommand(t *testing.T) {
+	// The chord was never a key of its own: it was a --dismiss flag inside the
+	// pane's shell string, quoted because it is two keys with a space between
+	// them. That is the spelling every manifest written before config.toml has.
+	data := []byte(`
+[[panes]]
+id      = "scratch"
+width   = "80%"
+height  = "50%"
+command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
+`)
+	got := ManifestSettings(data)
+	want := Config{Dismiss: "C-b '", Width: "80%", Height: "50%"}
+	if got != want {
+		t.Errorf("ManifestSettings() = %#v, want %#v", got, want)
+	}
+}
+
+func TestManifestSettingsReadsAChordQuotedTheOtherWay(t *testing.T) {
+	// A hand-edited manifest is exactly what this reads, and nothing made
+	// anyone spell the flag the way the shipped file did.
+	data := []byte(`
+[[panes]]
+id      = "scratch"
+command = ["/bin/sh", "-c", "exec herdr-scratch popup --dismiss='C-a ;'"]
+`)
+	if got := ManifestSettings(data); got.Dismiss != "C-a ;" {
+		t.Errorf("ManifestSettings() Dismiss = %q, want %q", got.Dismiss, "C-a ;")
+	}
+}
+
+func TestManifestSettingsIgnoresAManifestItCannotParse(t *testing.T) {
+	// Nothing to migrate is a better answer than a wrong migration notice: the
+	// manifest is being overwritten either way, and a guess printed as a config
+	// line is one the user would paste.
+	if got := ManifestSettings([]byte("[[panes\n")); got != (Config{}) {
+		t.Errorf("ManifestSettings(garbage) = %#v, want the zero Config", got)
+	}
+}
+
+func TestManifestSettingsReportsNothingForAManifestWithNoPane(t *testing.T) {
+	// Valid TOML carrying none of the settings this looks for — an old manifest
+	// trimmed down, or a file that is not a manifest at all.
+	if got := ManifestSettings([]byte("id = \"user.scratch\"\n")); got != (Config{}) {
+		t.Errorf("ManifestSettings() = %#v, want the zero Config", got)
+	}
+}
+
+func TestDismissChordPrefersAFlagThatWasGiven(t *testing.T) {
+	// A manifest somebody hand-edited before the settings moved still passes
+	// --dismiss, and it has to keep working — their popup answers that chord.
+	got := DismissChord("C-a ;", true, Config{Dismiss: "C-b '"})
+	if got != "C-a ;" {
+		t.Errorf("DismissChord() = %q, want the flag %q", got, "C-a ;")
+	}
+}
+
+func TestDismissChordTakesTheFileWhenNoFlagWasGiven(t *testing.T) {
+	// The ordinary path once the shipped manifest stopped passing one. Given
+	// as an empty flag rather than an absent one, because that is what cobra
+	// hands over for a flag whose default is "".
+	got := DismissChord("", false, Config{Dismiss: "C-a ;"})
+	if got != "C-a ;" {
+		t.Errorf("DismissChord() = %q, want the config's %q", got, "C-a ;")
+	}
+}
+
+func TestDismissChordFallsBackWhenTheFileSetsNoChord(t *testing.T) {
+	// No config file, or one that set everything except this. An empty chord
+	// reaching tmux is a popup with no way out, so there is always a default.
+	got := DismissChord("", false, Config{})
+	if want := DefaultConfig().Dismiss; got != want {
+		t.Errorf("DismissChord() = %q, want the default %q", got, want)
+	}
+}
+
+func TestSizeArgsSendsNothingWhenNoSizeIsSet(t *testing.T) {
+	// Sending no size is what leaves herdr applying the manifest's shipped
+	// default, so somebody who never set one sees no change at all.
+	if got := SizeArgs(Config{}); got != nil {
+		t.Errorf("SizeArgs() = %#v, want nil", got)
+	}
+}
+
+func TestSizeArgsSendsOnlyTheDimensionThatWasSet(t *testing.T) {
+	got := SizeArgs(Config{Height: "40%"})
+	want := []string{"--height", "40%"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SizeArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMigratedSettingsSaysNothingAboutAnUntouchedManifest(t *testing.T) {
+	// The common upgrade, and the one that must stay quiet: a manifest nobody
+	// edited names the same chord and the same size the plugin is about to use
+	// anyway. The chord is the trap — the shipped manifest no longer carries
+	// one, so comparing the two files directly reports every install there is.
+	had := Config{Dismiss: "C-b '", Width: "70%", Height: "70%"}
+	shipped := Config{Width: "70%", Height: "70%"}
+	if got := MigratedSettings(had, shipped); got != nil {
+		t.Errorf("MigratedSettings(untouched) = %#v, want nothing to carry over", got)
+	}
+}
+
+func TestMigratedSettingsNamesWhatTheUserChanged(t *testing.T) {
+	had := Config{Dismiss: "C-a ;", Width: "90%", Height: "70%"}
+	shipped := Config{Width: "70%", Height: "70%"}
+	got := MigratedSettings(had, shipped)
+	want := []string{`dismiss = "C-a ;"`, `width = "90%"`}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MigratedSettings() = %#v, want %#v", got, want)
+	}
+}
+
+func TestMigratedSettingsSaysNothingWhenThereWasNoManifest(t *testing.T) {
+	// A first install: nothing was in place, so ManifestSettings reported the
+	// zero Config. An empty value is a setting that manifest never had — not a
+	// setting to move, and certainly not `width = ""`.
+	shipped := Config{Width: "70%", Height: "70%"}
+	if got := MigratedSettings(Config{}, shipped); got != nil {
+		t.Errorf("MigratedSettings(nothing) = %#v, want nothing to carry over", got)
 	}
 }
