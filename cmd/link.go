@@ -23,8 +23,13 @@ var linked = []string{"bin", "tmux.conf", "shell"}
 
 var linkCmd = &cobra.Command{
 	Use:   "link",
-	Short: "Register this build with herdr, once and for all",
-	Long: `Run once after installing. Upgrades need nothing.
+	Short: "Register this build with herdr, and install its manifest",
+	Long: `Run after installing, and again after an upgrade that changes the manifest.
+
+The registration itself survives an upgrade — that is what this command exists to
+arrange. The manifest does not: herdr keeps the copy in the directory it recorded,
+and only this command replaces it. A release whose manifest changed therefore
+reaches you when you run this, and not before.
 
 herdr records a plugin by resolving its manifest and keeping the real directory
 that holds it. Point herdr straight at a Homebrew prefix and it records
@@ -74,7 +79,13 @@ it only points out anything an older manifest was still carrying.`,
 		}
 		// Read the one being replaced first: a manifest written before
 		// config.toml existed is the last copy of whatever the user set in it.
-		inPlace, _ := os.ReadFile(dst)
+		inPlace, err := os.ReadFile(dst)
+		if err != nil && !os.IsNotExist(err) {
+			// The file is about to be overwritten, so this is the only moment
+			// the notice could have been produced. Say it went missing rather
+			// than printing nothing and looking like there was nothing to say.
+			slog.Error("could not read the manifest being replaced", "path", dst, "err", err)
+		}
 		carry := scratch.MigratedSettings(scratch.ManifestSettings(inPlace), scratch.ManifestSettings(shipped))
 		if err := os.WriteFile(dst, shipped, 0o644); err != nil {
 			return err
@@ -91,7 +102,7 @@ it only points out anything an older manifest was still carrying.`,
 		fmt.Fprintf(cmd.OutOrStdout(), "linked %s -> %s\n", root, source)
 		if len(carry) > 0 {
 			fmt.Fprintf(cmd.OutOrStdout(),
-				"\nthe %s replaced here had settings of its own. They live in\n%s now:\n\n%s\n",
+				"\nthe %s replaced here had settings of its own. Put them in\n%s:\n\n%s\n",
 				manifest, scratch.ConfigPath(os.Getenv, home), strings.Join(carry, "\n"))
 		}
 		return nil

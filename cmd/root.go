@@ -98,10 +98,13 @@ func herdrBin() string {
 // the defaults, because a popup that opens with the wrong chord still beats a
 // popup that does not open.
 func userConfig() scratch.Config {
+	// A missing home directory is not fatal here: it only feeds ConfigPath's
+	// last tier, and HERDR_PLUGIN_CONFIG_DIR — set on every command herdr runs,
+	// which is all of them that matter — is resolved before that tier is
+	// reached.
 	home, err := os.UserHomeDir()
 	if err != nil {
-		slog.Error("no home directory to resolve the config against", "err", err)
-		return scratch.DefaultConfig()
+		slog.Warn("no home directory; only HERDR_PLUGIN_CONFIG_DIR can name the config", "err", err)
 	}
 
 	path := scratch.ConfigPath(os.Getenv, home)

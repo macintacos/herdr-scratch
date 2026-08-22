@@ -36,6 +36,10 @@ function __herdr_scratch_notify --on-event fish_postexec
     #
     # Both read at call time, not load time, so setting either anywhere in your
     # config takes effect.
+    #
+    # 10000 is the same default DefaultConfig carries in internal/scratch, kept
+    # here as well because a session started before the upgrade has no
+    # HERDR_SCRATCH_NOTIFY_AFTER on it at all.
     set -l after 10000
     set -q HERDR_SCRATCH_NOTIFY_AFTER; and set after $HERDR_SCRATCH_NOTIFY_AFTER
     set -q herdr_scratch_notify_after; and set after $herdr_scratch_notify_after

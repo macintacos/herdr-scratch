@@ -404,6 +404,43 @@ func TestLoadConfigRejectsASizeHerdrWouldRefuse(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsAKeyItDoesNotRecognise(t *testing.T) {
+	// A typo that decodes quietly is the failure this file exists to end: the
+	// user edits `dismis`, the popup keeps its old chord, and nothing anywhere
+	// says why. Reported instead, and the defaults stand.
+	got, err := LoadConfig([]byte("dismis = \"C-a ;\"\n"))
+	if err == nil {
+		t.Error("LoadConfig(typo) error = nil, want the unknown key reported")
+	}
+	if got != DefaultConfig() {
+		t.Errorf("LoadConfig(typo) = %#v, want %#v", got, DefaultConfig())
+	}
+}
+
+func TestLoadConfigRejectsASizeThatIsNotASize(t *testing.T) {
+	// A TOML integer is a size; a TOML boolean is not. Weak typing would turn
+	// `true` into "1" and open a one-cell popup without complaining.
+	if _, err := LoadConfig([]byte("width = true\n")); err == nil {
+		t.Error("LoadConfig(width = true) error = nil, want a decode failure")
+	}
+}
+
+func TestLoadConfigTreatsAnEmptyChordAsUnset(t *testing.T) {
+	// `dismiss = ""` has to reach DismissChord as "no chord set" so it falls
+	// through to the default, rather than validating as a chord or binding an
+	// empty one — which tmux would take, leaving a popup with no way out.
+	got, err := LoadConfig([]byte("dismiss = \"\"\n"))
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if got.Dismiss != "" {
+		t.Errorf("Dismiss = %q, want empty", got.Dismiss)
+	}
+	if chord := DismissChord("", false, got); chord != DefaultConfig().Dismiss {
+		t.Errorf("DismissChord() = %q, want the default %q", chord, DefaultConfig().Dismiss)
+	}
+}
+
 func TestConfigPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
 	// herdr sets HERDR_PLUGIN_CONFIG_DIR on every plugin command, which is the
 	// point of it: the plugin never has to work out where its config lives.
@@ -474,6 +511,19 @@ command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup
 	}
 }
 
+func TestManifestSettingsReadsAChordQuotedTheOtherWay(t *testing.T) {
+	// A hand-edited manifest is exactly what this reads, and nothing made
+	// anyone spell the flag the way the shipped file did.
+	data := []byte(`
+[[panes]]
+id      = "scratch"
+command = ["/bin/sh", "-c", "exec herdr-scratch popup --dismiss='C-a ;'"]
+`)
+	if got := ManifestSettings(data); got.Dismiss != "C-a ;" {
+		t.Errorf("ManifestSettings() Dismiss = %q, want %q", got.Dismiss, "C-a ;")
+	}
+}
+
 func TestManifestSettingsIgnoresAManifestItCannotParse(t *testing.T) {
 	// Nothing to migrate is a better answer than a wrong migration notice: the
 	// manifest is being overwritten either way, and a guess printed as a config
@@ -488,6 +538,50 @@ func TestManifestSettingsReportsNothingForAManifestWithNoPane(t *testing.T) {
 	// trimmed down, or a file that is not a manifest at all.
 	if got := ManifestSettings([]byte("id = \"user.scratch\"\n")); got != (Config{}) {
 		t.Errorf("ManifestSettings() = %#v, want the zero Config", got)
+	}
+}
+
+func TestDismissChordPrefersAFlagThatWasGiven(t *testing.T) {
+	// A manifest somebody hand-edited before the settings moved still passes
+	// --dismiss, and it has to keep working — their popup answers that chord.
+	got := DismissChord("C-a ;", true, Config{Dismiss: "C-b '"})
+	if got != "C-a ;" {
+		t.Errorf("DismissChord() = %q, want the flag %q", got, "C-a ;")
+	}
+}
+
+func TestDismissChordTakesTheFileWhenNoFlagWasGiven(t *testing.T) {
+	// The ordinary path once the shipped manifest stopped passing one. Given
+	// as an empty flag rather than an absent one, because that is what cobra
+	// hands over for a flag whose default is "".
+	got := DismissChord("", false, Config{Dismiss: "C-a ;"})
+	if got != "C-a ;" {
+		t.Errorf("DismissChord() = %q, want the config's %q", got, "C-a ;")
+	}
+}
+
+func TestDismissChordFallsBackWhenTheFileSetsNoChord(t *testing.T) {
+	// No config file, or one that set everything except this. An empty chord
+	// reaching tmux is a popup with no way out, so there is always a default.
+	got := DismissChord("", false, Config{})
+	if want := DefaultConfig().Dismiss; got != want {
+		t.Errorf("DismissChord() = %q, want the default %q", got, want)
+	}
+}
+
+func TestSizeArgsSendsNothingWhenNoSizeIsSet(t *testing.T) {
+	// Sending no size is what leaves herdr applying the manifest's shipped
+	// default, so somebody who never set one sees no change at all.
+	if got := SizeArgs(Config{}); got != nil {
+		t.Errorf("SizeArgs() = %#v, want nil", got)
+	}
+}
+
+func TestSizeArgsSendsOnlyTheDimensionThatWasSet(t *testing.T) {
+	got := SizeArgs(Config{Height: "40%"})
+	want := []string{"--height", "40%"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SizeArgs() = %#v, want %#v", got, want)
 	}
 }
 

@@ -40,7 +40,18 @@ keep no screen, so they can only hand back a bare prompt.`,
 		}
 
 		cfg := userConfig()
-		chord := dismissFrom(cmd, cfg)
+
+		// A manifest written before the settings moved still passes --dismiss,
+		// and a flag that was given beats the file. Said out loud because the
+		// symptom otherwise is a config.toml edit that does nothing: herdr
+		// keeps the manifest it recorded until `link` replaces it, so an
+		// upgraded binary can still be reading a chord from an old one.
+		flagGiven := cmd.Flags().Changed("dismiss")
+		if flagGiven {
+			slog.Warn("--dismiss overrides dismiss in config.toml; re-run `herdr-scratch link` to install this release's manifest",
+				"chord", dismissChord)
+		}
+		chord := scratch.DismissChord(dismissChord, flagGiven, cfg)
 
 		lead, key, ok := scratch.DismissKeys(chord)
 		if !ok {
@@ -123,26 +134,9 @@ func sessionExists(session string) bool {
 // dismissTable is the one-key tmux key table the lead key switches into.
 const dismissTable = "scratch"
 
-// dismissChord holds --dismiss, which the shipped manifest no longer passes.
+// dismissChord holds --dismiss, which the shipped manifest does not pass: the
+// chord comes from config.toml, and this overrides it.
 var dismissChord string
-
-// dismissFrom picks the chord to bind: the flag when it was actually given,
-// then the config file, then the built-in default.
-//
-// Changed() rather than a non-empty check is what keeps the order honest. The
-// flag has to lose to the config file in the ordinary case — otherwise a
-// manifest that passes --dismiss would beat the file every time, which is the
-// coupling this move exists to break — while a manifest somebody hand-edited
-// before the move keeps working, chord and all.
-func dismissFrom(cmd *cobra.Command, cfg scratch.Config) string {
-	if cmd.Flags().Changed("dismiss") {
-		return dismissChord
-	}
-	if cfg.Dismiss != "" {
-		return cfg.Dismiss
-	}
-	return scratch.DefaultConfig().Dismiss
-}
 
 func init() {
 	popupCmd.Flags().StringVar(&dismissChord, "dismiss", "",

@@ -19,9 +19,14 @@ import (
 //
 // It is a file of its own rather than a section of the manifest because the
 // manifest is the plugin's: herdr resolves it, the package ships it, and every
-// release replaces it. Anything the user typed in there was one upgrade away
-// from being overwritten — or, while `link` refused to overwrite it, one
-// upgrade away from never arriving.
+// release replaces it. Anything the user typed there is one upgrade away from
+// being overwritten.
+//
+// The fields are not uniform, deliberately: Dismiss and NotifyAfter carry the
+// defaults in DefaultConfig, while Width and Height are empty until the user
+// sets one, because empty is how SizeArgs says "leave the size to herdr". So
+// an empty Width means unset, but an empty Dismiss only ever appears on a
+// Config nobody defaulted.
 type Config struct {
 	Dismiss     string `koanf:"dismiss"      validate:"omitempty,dismisschord"`
 	NotifyAfter int    `koanf:"notify_after" validate:"gte=0"`
@@ -57,15 +62,15 @@ func ConfigPath(lookup func(string) string, home string) string {
 	if dir == "" {
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, "herdr", "plugins", "config", pluginID, configFile)
+	return filepath.Join(dir, "herdr", "plugins", "config", PluginID, configFile)
 }
 
 const (
 	// configFile is the name inside whichever config directory is resolved.
 	configFile = "config.toml"
-	// pluginID is the manifest's id, which is also the directory herdr keeps
-	// this plugin's config under.
-	pluginID = "user.scratch"
+	// PluginID is the manifest's id — what herdr knows this plugin as, and the
+	// directory it keeps its config under.
+	PluginID = "user.scratch"
 )
 
 // LoadConfig reads the settings out of the bytes of config.toml.
@@ -87,11 +92,20 @@ func LoadConfig(data []byte) (Config, error) {
 	cfg := DefaultConfig()
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
-			// So `width = 80` and `width = "70%"` both land in the same string
-			// field — herdr's PopupSize accepts either spelling.
-			WeaklyTypedInput: true,
-			TagName:          "koanf",
-			Result:           &cfg,
+			// A key this does not recognise is a typo, and a typo that decodes
+			// quietly is the failure this file exists to end: the user edits
+			// `dismis`, nothing changes, and nothing says why.
+			ErrorUnused: true,
+			// A size may be written as a TOML integer — herdr's PopupSize takes
+			// a cell count as readily as "70%" — so that one conversion is
+			// allowed by name. WeaklyTypedInput would do it too, along with
+			// turning `width = true` into a one-cell popup without complaint.
+			DecodeHook: func(from, to reflect.Type, v any) (any, error) {
+				if from.Kind() == reflect.Int64 && to.Kind() == reflect.String {
+					return fmt.Sprint(v), nil
+				}
+				return v, nil
+			},
 		},
 	}); err != nil {
 		return DefaultConfig(), fmt.Errorf("%s: %w", configFile, err)
@@ -174,6 +188,43 @@ func ManifestSettings(data []byte) Config {
 		cfg.Dismiss = m[1] + m[2]
 	}
 	return cfg
+}
+
+// DismissChord picks the chord to bind: the flag when it was given, then the
+// config file, then the built-in default.
+//
+// flagGiven rather than a non-empty flag is what keeps the order honest. The
+// flag has to lose to the config file in the ordinary case — otherwise a
+// manifest that passes --dismiss would beat the file every time, which is the
+// coupling moving these settings out exists to break — while a manifest
+// somebody hand-edited before the move keeps working, chord and all.
+//
+// The caller reads it off its own flag set; taking the answer rather than the
+// flag set is what keeps this side of the decision testable.
+func DismissChord(flag string, flagGiven bool, cfg Config) string {
+	if flagGiven {
+		return flag
+	}
+	if cfg.Dismiss != "" {
+		return cfg.Dismiss
+	}
+	return DefaultConfig().Dismiss
+}
+
+// SizeArgs spells whichever popup dimensions the user set as flags for
+// `herdr plugin pane open`.
+//
+// Nothing at all when nothing is set: that leaves herdr applying the size the
+// manifest declares, which is where the shipped default lives.
+func SizeArgs(cfg Config) []string {
+	var args []string
+	if cfg.Width != "" {
+		args = append(args, "--width", cfg.Width)
+	}
+	if cfg.Height != "" {
+		args = append(args, "--height", cfg.Height)
+	}
+	return args
 }
 
 // MigratedSettings names the settings a manifest being replaced carried that

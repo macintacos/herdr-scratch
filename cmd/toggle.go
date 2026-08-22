@@ -10,10 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	pluginID   = "user.scratch"
-	entrypoint = "scratch"
-)
+// entrypoint is the pane the manifest declares; the plugin's own id lives in
+// internal/scratch, where the config path is built from it too.
+const entrypoint = "scratch"
 
 var toggleCmd = &cobra.Command{
 	Use:   "toggle",
@@ -46,7 +45,7 @@ socket client of its own.`,
 		}
 
 		open := exec.Command(herdrBin(), "plugin", "pane", "open",
-			"--plugin", pluginID,
+			"--plugin", scratch.PluginID,
 			"--entrypoint", entrypoint,
 			"--cwd", paneCwd,
 			"--env", "HERDR_SCRATCH_SESSION="+session,
@@ -54,7 +53,7 @@ socket client of its own.`,
 		// Only when the config sets one. Sending nothing leaves herdr to apply
 		// the size the manifest declares, which is where the shipped default
 		// lives — so a user who never set a size sees no change at all.
-		open.Args = append(open.Args, sizeArgs(userConfig())...)
+		open.Args = append(open.Args, scratch.SizeArgs(userConfig())...)
 		slog.Info("opening: no attached session, asking herdr for the pane",
 			"session", session, "cwd", paneCwd, "argv", open.Args)
 
@@ -89,19 +88,6 @@ func sessionAttached(session string) bool {
 		"session", session, "attached_clients", clients, "attached", attached,
 		"exists", clients != "")
 	return attached
-}
-
-// sizeArgs spells whichever popup dimensions the user set as flags for
-// `herdr plugin pane open`.
-func sizeArgs(cfg scratch.Config) []string {
-	var args []string
-	if cfg.Width != "" {
-		args = append(args, "--width", cfg.Width)
-	}
-	if cfg.Height != "" {
-		args = append(args, "--height", cfg.Height)
-	}
-	return args
 }
 
 func init() { rootCmd.AddCommand(toggleCmd) }

@@ -23,8 +23,15 @@ herdr-scratch link
 The formula brings herdr and tmux with it, and Go to build with, so there is nothing to
 install first.
 
-`link` is the only registration you ever do — `brew upgrade herdr-scratch` picks up the
+`link` is the only *registration* you ever do — `brew upgrade herdr-scratch` picks up the
 new build without it.
+
+> [!IMPORTANT]
+> Run `herdr-scratch link` again after upgrading to 0.5.0. herdr keeps the manifest in the
+> directory it recorded, and only `link` replaces it — so until you do, an older manifest
+> is still passing `--dismiss`, which overrides the `dismiss` you set in `config.toml` and
+> makes an edit there look like it did nothing. `link` prints anything it finds worth
+> keeping before it replaces the file.
 
 > [!NOTE]
 > Upgrading pulls herdr up with it, since the formula depends on herdr, and a herdr server
@@ -203,8 +210,8 @@ Everything you can set lives in one file:
 ~/.config/herdr/plugins/config/user.scratch/config.toml
 ```
 
-It does not exist until you create it. `herdr plugin list` prints the plugin's own
-directory if you want to see where herdr put the rest.
+It does not exist until you create it, and `herdr plugin config-dir user.scratch` prints
+the directory it goes in — worth running first if your settings are not being picked up.
 
 ```toml
 dismiss      = "C-b '"   # the two tmux keys that close the popup
@@ -257,7 +264,8 @@ rm -rf ~/.config/herdr/plugins/config/user.scratch   # your settings
 brew uninstall herdr-scratch          # if you installed it that way
 ```
 
-Then delete the `[[keys.command]]` block from `config.toml` and `herdr server reload-config`.
+Then delete the `[[keys.command]]` block from herdr's own `~/.config/herdr/config.toml`
+and `herdr server reload-config`.
 
 ## Troubleshooting
 
@@ -285,8 +293,10 @@ because a keybinding's stderr goes to herdr and a popup's is inside a popup that
 tail -f ~/.local/state/herdr/plugins/user.scratch/herdr-scratch.log
 ```
 
-That is where herdr keeps this plugin's state. A binary you ran yourself, outside herdr,
-writes to `~/.local/state/herdr-scratch/herdr-scratch.log` instead.
+That is where herdr keeps this plugin's state, so it holds everything herdr invokes — the
+keypresses, the popup, the notifications. `herdr-scratch link`, which you run yourself,
+writes to `~/.local/state/herdr-scratch/herdr-scratch.log` instead — that is the one to
+read when settings did not survive an upgrade.
 
 Readable lines by default, JSON with `--debug`, which also turns on the debug records —
 the space the chord fired from, what tmux said about its session, and the exact

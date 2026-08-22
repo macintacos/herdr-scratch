@@ -199,7 +199,7 @@ func SessionIsAttached(out string) bool {
 // It is a chord rather than a single key because it has to be the one that
 // opened the popup, and herdr's own is a prefix plus a key. Which prefix, and
 // which key, are the user's: the default here matches herdr's default, and
-// anything else is passed to popup from the manifest.
+// anything else comes from config.toml, or from --dismiss overriding it.
 //
 // Reported as not-ok unless it is exactly two keys. tmux would take a malformed
 // binding without complaint and leave the popup with no way out.
@@ -232,6 +232,7 @@ func TmuxKeyArg(key string) string {
 // terminal failed: not a terminal" and the popup exits before reaching the
 // attach it was going to do anyway. Asking first costs one has-session call and
 // makes creating and attaching two separate things, which is what they are.
+//
 // notifyAfter rides along for the same reason the other two do: the shell
 // integration compares it after every command, and asking the binary for it
 // each time would spawn a process per prompt. The cost is that changing it in
