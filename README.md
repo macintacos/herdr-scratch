@@ -213,16 +213,23 @@ Everything you can set lives in one file:
 It does not exist until you create it, and `herdr plugin config-dir user.scratch` prints
 the directory it goes in — worth running first if your settings are not being picked up.
 
+| key | what it sets | format | default |
+| --- | --- | --- | --- |
+| `dismiss` | the chord that closes the popup | two tmux keys, separated by a space | `"C-b '"` |
+| `notify_after` | how long a command must run before it notifies | milliseconds | `10000` |
+| `width` | how wide the popup opens | terminal cells as a number, or a percentage string | `"70%"` |
+| `height` | how tall it opens | the same | `"70%"` |
+
+Set only what you are changing — a key you leave out keeps its default:
+
 ```toml
-dismiss      = "C-b '"   # the two tmux keys that close the popup
-notify_after = 10000     # milliseconds before a finished command notifies
-width        = "70%"     # terminal cells as a number, or a percentage string
-height       = "70%"
+dismiss = "C-a ;"
+width   = "80%"
 ```
 
-Those are the defaults, so a key you leave out is a key you have not changed. A file this
-cannot read is ignored in favour of them rather than breaking the popup — the reason lands
-in the [log](#troubleshooting).
+A file this cannot read is ignored in favour of the defaults rather than breaking the
+popup, and so is a key it does not recognise — a `dismis` typo is reported by name in the
+[log](#troubleshooting) instead of quietly doing nothing.
 
 > [!NOTE]
 > `herdr-plugin.toml` is **not** where settings go. It is the plugin's own manifest, and
@@ -231,19 +238,16 @@ in the [log](#troubleshooting).
 > here. Until you re-run `link`, a `--dismiss` still sitting on your pane command keeps
 > winning over the file, so the popup carries on answering the chord it always did.
 
-**The dismiss chord** — `dismiss`, in tmux's key syntax. It has to name the same chord
-that *opens* the popup, and the default assumes herdr's default prefix with the binding
-above. If your herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something
-other than <kbd>'</kbd>, change this to match — `"C-a ;"` for <kbd>Ctrl</kbd> +
-<kbd>A</kbd> then <kbd>;</kbd>. Nothing can work it out for you: herdr has no way to
-report its prefix, and the popup has to be told before it opens.
+**`dismiss` is the one worth reading twice.** It has to name the same chord that *opens*
+the popup, and the default assumes herdr's default prefix with the binding above. If your
+herdr prefix is <kbd>Ctrl</kbd> + <kbd>A</kbd>, or you bound something other than
+<kbd>'</kbd>, change it to match — `"C-a ;"` for <kbd>Ctrl</kbd> + <kbd>A</kbd> then
+<kbd>;</kbd>. Nothing can work it out for you: herdr has no way to report its prefix, and
+the popup has to be told before it opens.
 
 The new chord works on the next open. The old one keeps working alongside it until the
 scratch tmux server exits, since tmux holds the binding rather than this plugin — end it
 with `tmux -L herdr-scratch kill-server` if that bothers you.
-
-**Size** — `width` and `height`. Terminal cells as numbers, or a percentage string like
-`"70%"`. Leave both out for the shipped 70%.
 
 **Sessions** — `tmux -L herdr-scratch ls` lists them, one per space you have used it in.
 
