@@ -16,7 +16,6 @@ Linux — not Windows, since it depends on tmux.
 
 ```sh
 brew install macintacos/tap/herdr-scratch
-herdr-scratch link
 ```
 
 A prebuilt binary, so nothing compiles and Go is not needed — the cask brings herdr and
@@ -31,11 +30,13 @@ including a prebuilt tarball, so Linux does not have to compile either.
 > old formula Homebrew resolves the bare name to it rather than to the cask, which is why
 > `--cask` is spelled out here. The popup should keep working throughout: since 0.5.0 it
 > runs out of `~/.local/share/herdr-scratch`, which holds copies rather than links into
-> the Homebrew prefix, and `herdr-scratch link` re-points it at the cask build afterwards.
+> the Homebrew prefix, and the cask re-points it at its own build on install.
 
-Run `herdr-scratch link` again after every `brew upgrade`. It copies the new build into
-the directory herdr records — a directory no upgrade can delete, which is the point — so
-until you run it, herdr keeps loading the release you had before.
+The cask registers the build with herdr from its post-install hook, so an upgrade needs
+nothing from you: `brew upgrade --cask herdr-scratch` copies the new release into the
+directory herdr records — a directory no upgrade can delete, which is the point — and
+herdr loads it from the next restart. `herdr-scratch link` does that same registration by
+hand, for a hook that failed or an install that did not come from the cask.
 
 > [!IMPORTANT]
 > Re-run `herdr-scratch link` after upgrading to 0.5.0. Settings moved out of the plugin's
@@ -254,8 +255,9 @@ delivery on its own, run `herdr notification show test --body test`.
 directory the next upgrade deletes. Run `herdr-scratch link` to move the registration
 somewhere that survives.
 
-**The popup runs a release you already upgraded past.** `herdr-scratch link` copies the
-build rather than pointing at it, so a new one reaches herdr only when you re-run it. The
+**The popup runs a release you already upgraded past.** The cask's post-install hook
+registers each build, so seeing this means the hook did not run — or the install did not
+come from the cask. Run `herdr-scratch link` to register the build on your PATH. The
 version check in the tip above is the one that shows this — `herdr-scratch --version` on
 its own asks the copy on your PATH, which is already the new build and so never disagrees.
 

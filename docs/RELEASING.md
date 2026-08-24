@@ -62,13 +62,18 @@ cask has no equivalent, so these are yours:
 ```sh
 brew install --cask macintacos/tap/herdr-scratch
 herdr-scratch --version   # the tag you just cut — "dev" means the ldflags stamp broke
-herdr-scratch link        # exits 0; `stat .../bin` means the archive layout regressed
+"${XDG_DATA_HOME:-$HOME/.local/share}"/herdr-scratch/bin/herdr-scratch --version
 ```
 
+The two versions agreeing is the check: nothing was run between them, so it is the
+post-install hook that registered the build. A disagreement means the hook did not run,
+and a `stat .../bin` in its output means the archive layout regressed.
+
 And once there is a previous release to come from, the upgrade rather than the install —
-`brew upgrade --cask herdr-scratch` followed by `herdr-scratch link`, then press the
-chord. The popup surviving that is the thing a versioned Caskroom path would break, so it
-is worth one deliberate check per release rather than an assumption.
+`brew upgrade --cask herdr-scratch`, the same two versions agreeing with nothing run in
+between, then press the chord. That no `herdr-scratch link` is needed there is half of
+what is being checked; the popup surviving is the other half, and a versioned Caskroom
+path would break it. Worth one deliberate check per release rather than an assumption.
 
 Worth one look on a fresh machine as well: Homebrew quarantines what a cask downloads, and
 the cask's `postflight` strips the attribute back off. If macOS refuses to run
