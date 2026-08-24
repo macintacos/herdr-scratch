@@ -2,10 +2,15 @@
 
 By hand, from a laptop — there is no CI. [goreleaser](https://goreleaser.com) builds
 darwin and linux binaries for both architectures, publishes the GitHub release with
-checksums and generated notes, and commits the cask to
+checksums and notes, and commits the cask to
 [macintacos/homebrew-tap](https://github.com/macintacos/homebrew-tap). Its config is
 [`.goreleaser.yaml`](../.goreleaser.yaml); goreleaser itself is pinned in
 [`mise.toml`](../mise.toml).
+
+The steps below are the by-hand path, and the reference for what each one is for. The
+[`/release` skill](../.claude/skills/release/SKILL.md) runs the same sequence with the
+version computed by [`svu`](https://github.com/caarlos0/svu) rather than typed, and the
+notes drafted from the commit range — which is the usual way to cut one.
 
 > [!IMPORTANT]
 > **Once, before the first cask release.** goreleaser writes `Casks/herdr-scratch.rb` into
@@ -17,10 +22,20 @@ checksums and generated notes, and commits the cask to
 
 ```sh
 $EDITOR herdr-plugin.toml                      # bump `version` to the tag you are cutting
-git commit -am "chore: 0.6.0" && git push
+git add herdr-plugin.toml && git commit -m "chore: 0.6.0" && git push
+git status --porcelain                         # must be empty, untracked files included
 git tag -a v0.6.0 -m v0.6.0 && git push origin v0.6.0
-GITHUB_TOKEN=$(gh auth token) mise exec -- goreleaser release --clean
+GITHUB_TOKEN=$(mise exec -- gh auth token) mise exec -- goreleaser release \
+  --clean --release-notes /tmp/release-notes-v0.6.0.md
 ```
+
+Stage the manifest by name rather than reaching for `commit -am`, and check the tree
+before tagging: goreleaser refuses to run on a tree with **any** uncommitted change,
+untracked files included, and it refuses at the last step — after the tag is public. The
+notes file is written to `/tmp` for that same reason: drafted in the repo root it would be
+one more untracked file, and it would fail the release at exactly that point. Dropping
+`--release-notes` is fine too; goreleaser then generates the notes from the commit log
+itself.
 
 **Through `mise exec`** because the `before:` hook execs `taplo` and inherits only
 goreleaser's own `PATH` — activated mise has it, `mise exec` has it either way.
@@ -35,7 +50,7 @@ anything.
 create the release, `macintacos/homebrew-tap` to commit the cask. A classic PAT with
 `repo` scope covers it, as does a fine-grained token scoped to the two. goreleaser reads
 `GITHUB_TOKEN`, so it lives in the environment for exactly one command and is never
-committed; `$(gh auth token)` is enough when `gh` is already authenticated.
+committed; `$(mise exec -- gh auth token)` is enough when `gh` is already authenticated.
 
 **Rehearse first.** `goreleaser release --snapshot --clean --skip=publish` builds all four
 targets into `dist/` and renders the cask to `dist/homebrew/Casks/herdr-scratch.rb`

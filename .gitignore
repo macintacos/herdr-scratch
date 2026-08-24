@@ -6,3 +6,10 @@
 # Where goreleaser stages a build: the four archives, the checksums, and the
 # rendered cask. Rebuilt from scratch by every `--clean` run.
 /dist/
+
+# Per-machine Claude Code settings. .claude/skills/ is committed — the release
+# skill lives there — so without this line a local settings file sits untracked
+# inside a tracked directory. That is worse than it sounds: goreleaser refuses to
+# release from a tree holding any untracked file at all, so an unignored one here
+# would fail the release at its last step, after the tag is already public.
+/.claude/settings.local.json
