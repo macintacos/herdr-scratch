@@ -8,8 +8,8 @@ package main
 
 import "github.com/macintacos/herdr-scratch/cmd"
 
-// version is stamped in at build time by the Homebrew formula, from the tag it
-// built. A build that nobody stamped is not a release, and says so.
+// version is stamped in at build time by goreleaser, from the tag it built. A
+// build that nobody stamped is not a release, and says so.
 var version = "dev"
 
 func main() {

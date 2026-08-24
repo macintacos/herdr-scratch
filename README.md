@@ -2,7 +2,7 @@
 
 A scratch shell for [herdr](https://herdr.dev), in a popup you toggle with one chord.
 
-![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/scratch-popup.png)
+![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/assets/scratch-popup.png)
 
 Press <kbd>prefix</kbd> + <kbd>'</kbd> and a shell opens over whatever you were doing,
 starting in that pane's directory. Press it again and the popup goes away — but the shell
@@ -19,7 +19,19 @@ brew install macintacos/tap/herdr-scratch
 herdr-scratch link
 ```
 
-The formula brings herdr, tmux, and Go with it, so there is nothing to install first.
+A prebuilt binary, so nothing compiles and Go is not needed — the cask brings herdr and
+tmux with it, and that is the whole dependency list. **macOS only**: Homebrew has no cask
+support on Linux, so a Linux install goes through one of the non-Homebrew paths below —
+including a prebuilt tarball, so Linux does not have to compile either.
+
+> [!IMPORTANT]
+> If you installed this before it was a cask, uninstall the formula first —
+> `brew uninstall herdr-scratch`, then `brew install --cask macintacos/tap/herdr-scratch`.
+> `brew upgrade` will not carry you across on its own, and while the tap still carries the
+> old formula Homebrew resolves the bare name to it rather than to the cask, which is why
+> `--cask` is spelled out here. The popup should keep working throughout: since 0.5.0 it
+> runs out of `~/.local/share/herdr-scratch`, which holds copies rather than links into
+> the Homebrew prefix, and `herdr-scratch link` re-points it at the cask build afterwards.
 
 Run `herdr-scratch link` again after every `brew upgrade`. It copies the new build into
 the directory herdr records — a directory no upgrade can delete, which is the point — so
@@ -34,20 +46,34 @@ until you run it, herdr keeps loading the release you had before.
 > [!NOTE]
 > Upgrading pulls herdr up with it, and a herdr server already running will not match the
 > CLI it was just upgraded past. Restart herdr afterwards, or use
-> `brew reinstall herdr-scratch` to leave your dependencies alone.
+> `brew reinstall --cask herdr-scratch` to leave your dependencies alone.
 
 <details>
-<summary>Installing without Homebrew</summary>
+<summary>Installing without Homebrew — and the way in on Linux</summary>
 
-You supply the dependencies: herdr 0.8.0+ (earlier versions have no `plugin pane`
-command), tmux, and Go 1.25+ to build with.
+The non-Homebrew paths, and on Linux the only ones. Three of them, cheapest first.
+
+**Take the prebuilt tarball.** Every
+[release](https://github.com/macintacos/herdr-scratch/releases) ships `linux_amd64` and
+`linux_arm64` archives that are already a plugin root — `bin/herdr-scratch` beside the
+manifest, `tmux.conf` and `shell/` — so nothing is compiled and Go is not needed. You
+still supply herdr 0.8.0+ (earlier versions have no `plugin pane` command) and tmux.
+
+```sh
+mkdir -p ~/.local/opt/herdr-scratch
+tar -xzf herdr-scratch_0.6.0_linux_arm64.tar.gz -C ~/.local/opt/herdr-scratch
+herdr plugin link ~/.local/opt/herdr-scratch
+```
+
+**Build from source.** Add Go 1.25+ to that dependency list; herdr compiles the binary for
+you as part of installing.
 
 ```sh
 herdr plugin install macintacos/herdr-scratch
 ```
 
-That compiles the binary for you. To manage the checkout yourself instead, note that
-`herdr plugin link` deliberately does **not** build — do that once by hand:
+**Manage the checkout yourself.** Note that `herdr plugin link` deliberately does **not**
+build — do that once by hand:
 
 ```sh
 git clone https://github.com/macintacos/herdr-scratch ~/.config/herdr/scratch
@@ -182,7 +208,7 @@ tmux -L herdr-scratch kill-server                    # stop every scratch shell
 herdr plugin unlink user.scratch                     # or: herdr plugin uninstall user.scratch
 rm -rf ~/.local/share/herdr-scratch                  # what `herdr-scratch link` created
 rm -rf ~/.config/herdr/plugins/config/user.scratch   # your settings
-brew uninstall herdr-scratch                         # if you installed it that way
+brew uninstall --cask herdr-scratch                  # if you installed it that way
 ```
 
 Then delete the `[[keys.command]]` block from herdr's own `~/.config/herdr/config.toml`
@@ -264,6 +290,12 @@ re-running it after every build — use the former while developing.
 > herdr registers one copy of a plugin, so linking a checkout replaces whatever was
 > registered before — a Homebrew install stops being the one herdr loads until you run
 > `herdr-scratch link` again.
+
+### Releasing
+
+Cutting a release is [`docs/RELEASING.md`](docs/RELEASING.md): goreleaser builds the
+binaries, publishes the GitHub release with checksums and notes, and commits the Homebrew
+cask to [macintacos/homebrew-tap](https://github.com/macintacos/homebrew-tap).
 
 ## License
 
