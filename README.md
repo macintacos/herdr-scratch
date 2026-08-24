@@ -20,7 +20,10 @@ herdr-scratch link
 ```
 
 The formula brings herdr, tmux, and Go with it, so there is nothing to install first.
-`brew upgrade` picks up new builds on its own.
+
+Run `herdr-scratch link` again after every `brew upgrade`. It copies the new build into
+the directory herdr records — a directory no upgrade can delete, which is the point — so
+until you run it, herdr keeps loading the release you had before.
 
 > [!IMPORTANT]
 > Re-run `herdr-scratch link` after upgrading to 0.5.0. Settings moved out of the plugin's
@@ -188,8 +191,16 @@ and `herdr server reload-config`.
 ## Troubleshooting
 
 > [!TIP]
-> `herdr-scratch --version` reports the build herdr is actually loading. Worth checking
-> first when what you see does not match what is documented here.
+> Worth checking first when what you see does not match what is documented here: which
+> build is herdr actually loading?
+>
+> ```sh
+> "${XDG_DATA_HOME:-$HOME/.local/share}"/herdr-scratch/bin/herdr-scratch --version
+> ```
+>
+> Ask that copy, not the `herdr-scratch` on your PATH. The one on PATH is whatever
+> Homebrew installed most recently; the one above is what `link` last put where herdr
+> reads it, and the gap between them is exactly what a missed re-link looks like.
 
 **The chord opens the popup but will not close it.** Almost always
 [`dismiss`](#configuring) not matching the chord you press. If you upgraded recently,
@@ -212,9 +223,15 @@ shells out to `terminal-notifier`, which hangs inside a popup and starves this o
 `functions -q __done_ended` inside the popup tells you whether it is loaded. To check
 delivery on its own, run `herdr notification show test --body test`.
 
-**`herdr plugin list` shows a `Cellar/herdr-scratch/<version>` path.** herdr was pointed
-at the Homebrew prefix directly, which pins it to a version an upgrade deletes. Run
-`herdr-scratch link` to move the registration somewhere that survives.
+**`herdr plugin list` shows a path with a version number in it** — under `Cellar/` or
+`Caskroom/`. herdr was pointed at the Homebrew prefix directly, which pins it to a
+directory the next upgrade deletes. Run `herdr-scratch link` to move the registration
+somewhere that survives.
+
+**The popup runs a release you already upgraded past.** `herdr-scratch link` copies the
+build rather than pointing at it, so a new one reaches herdr only when you re-run it. The
+version check in the tip above is the one that shows this — `herdr-scratch --version` on
+its own asks the copy on your PATH, which is already the new build and so never disagrees.
 
 **Nothing at all happens when you press it.** Read the log — keypresses have nowhere else
 to report:
@@ -235,9 +252,13 @@ command = ["./bin/herdr-scratch", "--debug", "toggle"]
 
 ```sh
 go build -o bin/herdr-scratch .   # what `herdr plugin install` runs for you
-go test ./...                     # the decision logic in internal/scratch
+go test ./...                     # the logic under test
 herdr plugin link "$PWD"          # point herdr at this checkout
 ```
+
+`herdr plugin link` points herdr at the checkout itself, so a rebuild is live immediately.
+`herdr-scratch link` is the packaged path and copies instead, which would leave you
+re-running it after every build — use the former while developing.
 
 > [!WARNING]
 > herdr registers one copy of a plugin, so linking a checkout replaces whatever was
