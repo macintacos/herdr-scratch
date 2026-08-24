@@ -7,11 +7,12 @@ version: 2
 project_name: herdr-scratch
 before:
   hooks:
-    - go mod download
-    # herdr reads the manifest's own `version`, not the tag, so a tag that
-    # disagrees with it publishes a release claiming to be a version nobody can
-    # see. Fail before the artifacts exist rather than after they are on GitHub.
+    # First, because it is the gate: herdr reads the manifest's own `version`,
+    # not the tag, so a tag that disagrees with it publishes a release claiming
+    # to be a version nobody can see. Costs milliseconds and needs no network,
+    # which is the other reason it comes before the download.
     - ./.mise/tasks/version-check {{ .Version }} {{ .IsSnapshot }}
+    - go mod download
 builds:
   - env:
       # Every release cross-compiles three of its four targets from one machine.
@@ -20,14 +21,23 @@ builds:
     goarch: [amd64, arm64]
     # What the tap formula stamped, kept verbatim: -s -w is what std_go_args
     # passed by default, and main.version is what `herdr-scratch --version`
-    # reports. Anything that stops stamping leaves it reporting "dev" forever.
+    # reports. This restates goreleaser's own default on purpose rather than
+    # inheriting it — the stamp is load-bearing, and a default that quietly
+    # changed would leave every release reporting "dev" with nothing to notice
+    # it by.
     ldflags:
       - -s -w -X main.version={{ .Version }}
-    # A path, not just a name — archives keep it, since strip_binary_directory
-    # is off by default. `herdr-scratch link` copies bin/, tmux.conf, shell/ and
-    # the manifest out of Dir(Dir(argv[0])), so a binary at the archive root
-    # would leave the extracted tree one level short and link would fail on a
-    # bare `stat .../bin: no such file or directory`.
+    # A path, not just a name. `herdr-scratch link` copies bin/, tmux.conf,
+    # shell/ and the manifest out of two directories above the *resolved*
+    # executable — Dir(Dir(EvalSymlinks(os.Executable()))), cmd/link.go's
+    # buildRoot — and it is that EvalSymlinks which turns the cask's PATH
+    # symlink into the staged Caskroom root. A binary at the archive root would
+    # leave the extracted tree one level short, and link would fail on a bare
+    # `stat .../bin: no such file or directory`.
+    #
+    # Two defaults hold this up, so leave both alone: strip_binary_directory
+    # would flatten the path back out of the archive, and wrap_in_directory
+    # would nest the tree one level deeper than the cask's binary stanza looks.
     binary: bin/herdr-scratch
 archives:
   # Naming `files` replaces goreleaser's defaults rather than adding to them, so
@@ -50,8 +60,10 @@ homebrew_casks:
   # A cask rather than a formula, because the archive already holds a built
   # binary and goreleaser's `brews` is soft-deprecated in favour of this. Its
   # sha256 per architecture is read from the checksums.txt goreleaser generates
-  # by default, so a prebuilt binary is integrity-checked the way building from
-  # source never needed to be.
+  # by default. The formula pinned a sha256 too — on the source tarball — so
+  # what changed is not that there is a checksum but what it covers: the binary
+  # the user actually runs, rather than the source someone else's toolchain
+  # rebuilt.
   #
   # Casks are macOS-only — Homebrew on Linux refuses to install one at all — so
   # the linux archives above are for `herdr plugin install` and by-hand
@@ -76,7 +88,9 @@ homebrew_casks:
     dependencies:
       - formula: herdr
       - formula: tmux
-    # The formula's caveats, carried over.
+    # The formula's caveats, with one line deliberately corrected: it said
+    # "Once — upgrades need nothing", which stopped being true when EXC-1151
+    # made `link` copy the build instead of symlinking into it.
     caveats: |
       Register the plugin with herdr. Run it again after every upgrade:
 
@@ -101,6 +115,12 @@ homebrew_casks:
         # reads and writes, which carry no extended attributes, so the build the
         # popup runs comes out clean regardless. This is the copy you type
         # `herdr-scratch link` with, which makes it the one that has to run.
+        #
+        # The `-h` probe is not defensive padding: xattr was a /usr/bin/python3
+        # script until recently, and on a machine without the Command Line Tools
+        # it fails rather than runs. goreleaser's own docs ship the guard for
+        # that reason — a cask that cannot strip the attribute should still
+        # install.
         install: |
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bin/herdr-scratch"]

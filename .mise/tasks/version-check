@@ -4,26 +4,27 @@
 set -euo pipefail
 
 # Run by .goreleaser.yaml's before hook as `version-check {{ .Version }}
-# {{ .IsSnapshot }}`, and by hand as `mise run version-check 0.5.1`. goreleaser
+# {{ .IsSnapshot }}`, and by hand as `mise run version-check 0.6.0`. goreleaser
 # execs it without a shell, so it takes plain positional arguments rather than
 # mise's #USAGE parsing — the hook has no mise to route through.
 version="${1:?usage: version-check <version> [is-snapshot]}"
 
 # A snapshot's version is invented from the last tag plus a commit
-# (0.5.1-SNAPSHOT-31dae81). There is no tag for the manifest to be level with, so
+# (0.5.0-SNAPSHOT-73f6ee1). There is no tag for the manifest to be level with, so
 # there is nothing here to compare it against.
 if [ "${2:-false}" = "true" ]; then
 	echo "version-check: $version is a snapshot; no tag to be level with"
 	exit 0
 fi
 
-# Matched on the value rather than the layout: taplo's align_entries pads the `=`
-# out to the widest key in the table, so the spacing shifts the moment a longer
-# key is added. The ^ is what keeps min_herdr_version out of it.
-manifest=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' herdr-plugin.toml)
+# taplo, rather than a hand-rolled regex: it is already pinned in mise.toml and
+# already runs in two hk steps, it is not fooled by a trailing comment or by
+# taplo's own align_entries padding, and a missing key exits non-zero here rather
+# than arriving below as an empty string that reads like a version mismatch.
+manifest=$(taplo get -f herdr-plugin.toml version)
 
 if [ "$manifest" != "$version" ]; then
-	echo "version-check: herdr-plugin.toml says '${manifest}', the tag says '${version}'" >&2
+	echo "version-check: herdr-plugin.toml says '${manifest}', you asked for '${version}'" >&2
 	echo "Bump the manifest and commit it before tagging." >&2
 	exit 1
 fi
