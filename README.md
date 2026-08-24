@@ -16,7 +16,6 @@ Linux — not Windows, since it depends on tmux.
 
 ```sh
 brew install macintacos/tap/herdr-scratch
-herdr-scratch link
 ```
 
 A prebuilt binary, so nothing compiles and Go is not needed — the cask brings herdr and
@@ -31,11 +30,18 @@ including a prebuilt tarball, so Linux does not have to compile either.
 > old formula Homebrew resolves the bare name to it rather than to the cask, which is why
 > `--cask` is spelled out here. The popup should keep working throughout: since 0.5.0 it
 > runs out of `~/.local/share/herdr-scratch`, which holds copies rather than links into
-> the Homebrew prefix, and `herdr-scratch link` re-points it at the cask build afterwards.
+> the Homebrew prefix, and the cask re-points it at its own build on install.
 
-Run `herdr-scratch link` again after every `brew upgrade`. It copies the new build into
-the directory herdr records — a directory no upgrade can delete, which is the point — so
-until you run it, herdr keeps loading the release you had before.
+The cask registers the build with herdr from its post-install hook, so an upgrade needs
+nothing from you: `brew upgrade --cask herdr-scratch` copies the new release into the
+directory herdr records — a directory no upgrade can delete, which is the point.
+`herdr-scratch link` does that same registration by hand, for a hook that failed or an
+install that did not come from the cask.
+
+One exception, if you set them: Homebrew strips `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
+`XDG_STATE_HOME` out of the environment it runs hooks in, so the hook uses the `$HOME`
+defaults rather than your paths. Running `herdr-scratch link` yourself puts all three back
+where you asked for them, and the next upgrade moves them again.
 
 > [!IMPORTANT]
 > Re-run `herdr-scratch link` after upgrading to 0.5.0. Settings moved out of the plugin's
@@ -229,8 +235,9 @@ and `herdr server reload-config`.
 > reads it, and the gap between them is exactly what a missed re-link looks like.
 
 **The chord opens the popup but will not close it.** Almost always
-[`dismiss`](#configuring) not matching the chord you press. If you upgraded recently,
-re-run `herdr-scratch link`.
+[`dismiss`](#configuring) not matching the chord you press. If you upgraded recently, the
+cask's hook may not have installed the new manifest — run `herdr-scratch link` to install
+it by hand.
 
 **The popup opens and closes immediately.** tmux failed to start, or the binary is
 missing. If you linked a local checkout, run `go build -o bin/herdr-scratch .` in it —
@@ -254,10 +261,13 @@ delivery on its own, run `herdr notification show test --body test`.
 directory the next upgrade deletes. Run `herdr-scratch link` to move the registration
 somewhere that survives.
 
-**The popup runs a release you already upgraded past.** `herdr-scratch link` copies the
-build rather than pointing at it, so a new one reaches herdr only when you re-run it. The
-version check in the tip above is the one that shows this — `herdr-scratch --version` on
-its own asks the copy on your PATH, which is already the new build and so never disagrees.
+**The popup runs a release you already upgraded past.** The cask's post-install hook
+registers each build, so seeing this means the hook did not run, the install did not come
+from the cask, or you set `XDG_DATA_HOME` — which Homebrew does not pass to the hook, so
+it registered `~/.local/share/herdr-scratch` instead of yours. Run `herdr-scratch link` to
+register the build on your PATH. The version check in the tip above is the one that shows
+this — `herdr-scratch --version` on its own asks the copy on your PATH, which is already
+the new build and so never disagrees.
 
 **Nothing at all happens when you press it.** Read the log — keypresses have nowhere else
 to report:

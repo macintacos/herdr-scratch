@@ -88,15 +88,11 @@ homebrew_casks:
     dependencies:
       - formula: herdr
       - formula: tmux
-    # The formula's caveats, with one line deliberately corrected: it said
-    # "Once — upgrades need nothing", which stopped being true when EXC-1151
-    # made `link` copy the build instead of symlinking into it.
+    # Registration is the post-install hook's job below, so what is left here is
+    # the one thing a cask cannot do for the user: bind a key. `link` closes the
+    # block as the repair path for a hook that did not run.
     caveats: |
-      Register the plugin with herdr. Run it again after every upgrade:
-
-        herdr-scratch link
-
-      Then bind a key in ~/.config/herdr/config.toml:
+      Bind a key in ~/.config/herdr/config.toml:
 
         [[keys.command]]
         key         = "prefix+'"
@@ -107,21 +103,61 @@ homebrew_casks:
       and apply it with:
 
         herdr server reload-config
+
+      Installing and upgrading register this build with herdr for you. If the
+      popup ever runs a build you have already upgraded past:
+
+        herdr-scratch link
     hooks:
       post:
         # Homebrew quarantines whatever a cask downloads, and macOS refuses to
         # run a quarantined binary from a developer it cannot identify. Only
         # this copy is affected: `herdr-scratch link` copies the tree with plain
         # reads and writes, which carry no extended attributes, so the build the
-        # popup runs comes out clean regardless. This is the copy you type
-        # `herdr-scratch link` with, which makes it the one that has to run.
+        # popup runs comes out clean regardless. This is the copy the hook below
+        # runs `link` from, which makes it the one that has to run.
         #
         # The `-h` probe is not defensive padding: xattr was a /usr/bin/python3
         # script until recently, and on a machine without the Command Line Tools
         # it fails rather than runs. goreleaser's own docs ship the guard for
         # that reason — a cask that cannot strip the attribute should still
         # install.
+        #
+        # `link` then registers the build, which is what makes `brew upgrade`
+        # deliver it rather than leaving herdr on the release before. Four
+        # details of that call, none of them padding:
+        #
+        # In a cask block `system_command` delegates to SystemCommand.run!,
+        # which raises by default, so `must_succeed: false` is what keeps a
+        # failed registration from taking `brew upgrade` down with it.
+        #
+        # bin/brew filters its child environment to an allow-list and forces
+        # PATH=/usr/bin:/bin:/usr/sbin:/sbin, so the Homebrew prefix is not on
+        # the PATH the hook inherits and `link`'s bare `herdr` lookup would fail
+        # on every install. cmd/root.go reads HERDR_BIN_PATH ahead of PATH, so
+        # the hook names herdr through that existing seam.
+        #
+        # print_stdout because system_command swallows stdout, and `link`'s
+        # `installed <root> from <source>` line is the only thing that makes the
+        # hook visible at all. It also carries the one-time notice listing
+        # settings an older manifest was still holding.
+        #
+        # That same allow-list drops XDG_DATA_HOME, XDG_CONFIG_HOME and
+        # XDG_STATE_HOME, and nothing inside brew can recover them. On a machine
+        # that sets any of them the hook installs under $HOME, points herdr's
+        # registration there, and prints the non-XDG config path in a migration
+        # notice. Running `herdr-scratch link` by hand moves all three back —
+        # until the next upgrade moves them again.
         install: |
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bin/herdr-scratch"]
+          end
+          # Registration runs second because it executes the binary the strip
+          # above just cleaned, and macOS will not run a quarantined one at all.
+          linked = system_command "#{staged_path}/bin/herdr-scratch", args: ["link"],
+                                  env: { "HERDR_BIN_PATH" => "#{HOMEBREW_PREFIX}/bin/herdr" },
+                                  must_succeed: false, print_stdout: true
+          unless linked.success?
+            opoo "herdr-scratch link failed, so herdr is not running this build. " \
+                 "Run `herdr-scratch link` to register it."
           end

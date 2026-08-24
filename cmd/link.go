@@ -24,7 +24,9 @@ var installed = []string{"bin", "tmux.conf", "shell"}
 var linkCmd = &cobra.Command{
 	Use:   "link",
 	Short: "Register this build with herdr, and install its manifest",
-	Long: `Run after installing, and again after every upgrade.
+	Long: `A Homebrew cask install and upgrade run this for you. Run it by hand
+when they did not — a post-install hook that failed, or an install that did not
+come from the cask.
 
 herdr records a plugin by resolving its manifest and keeping the real directory
 that holds it. Point herdr straight at a package manager's prefix and it records
