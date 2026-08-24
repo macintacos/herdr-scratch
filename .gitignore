@@ -6,3 +6,8 @@
 # Where goreleaser stages a build: the four archives, the checksums, and the
 # rendered cask. Rebuilt from scratch by every `--clean` run.
 /dist/
+
+# Per-machine Claude Code settings. The rest of .claude/ is committed — the
+# release skill lives there — so without this line a local settings file sits
+# untracked inside a tracked directory, one `git add .` from being shared.
+/.claude/settings.local.json
