@@ -13,34 +13,30 @@ import (
 	"github.com/macintacos/herdr-scratch/internal/scratch"
 )
 
-// manifest is the one file the stable directory owns outright. Everything
-// beside it is a symlink into the build, which is what lets an upgrade reach
-// the plugin without herdr being told about it again.
+// manifest is the one entry read before it is replaced, so `link` can say what
+// the copy being overwritten was still carrying.
 const manifest = "herdr-plugin.toml"
 
-// linked are the entries symlinked back into the build: the binary, the tmux
+// installed are the entries copied out of the build: the binary, the tmux
 // config it starts the session with, and the shell integration it sources.
-var linked = []string{"bin", "tmux.conf", "shell"}
+var installed = []string{"bin", "tmux.conf", "shell"}
 
 var linkCmd = &cobra.Command{
 	Use:   "link",
 	Short: "Register this build with herdr, and install its manifest",
-	Long: `Run after installing, and again after an upgrade that changes the manifest.
-
-The registration itself survives an upgrade — that is what this command exists to
-arrange. The manifest does not: herdr keeps the copy in the directory it recorded,
-and only this command replaces it. A release whose manifest changed therefore
-reaches you when you run this, and not before.
+	Long: `Run after installing, and again after every upgrade.
 
 herdr records a plugin by resolving its manifest and keeping the real directory
-that holds it. Point herdr straight at a Homebrew prefix and it records
-Cellar/herdr-scratch/<version>, which the next upgrade deletes — so the
-registration would have to be redone every time.
+that holds it. Point herdr straight at a package manager's prefix and it records
+a directory numbered by version — Cellar/herdr-scratch/<version> for a Homebrew
+formula, Caskroom/herdr-scratch/<version> for a cask — which the next upgrade
+deletes, taking the registration with it.
 
-This builds a directory herdr can keep instead: the manifest as a real file, and
-the rest symlinked at opt/herdr-scratch, the path Homebrew re-points at whatever
-version is current. herdr resolves to a directory that never moves, and the
-symlinks under it always reach the build that is installed now.
+This builds a directory herdr can keep instead, and copies this release into it:
+the binary, the tmux config, the shell integration, and the manifest. Nothing
+under it refers back to wherever the package was staged, so no upgrade can reach
+it. That cuts both ways — an upgraded build reaches herdr when you run this, and
+not before.
 
 The manifest is the plugin's, so every run installs this release's copy of it.
 The settings you own live in config.toml instead, which this never writes to —
@@ -57,20 +53,8 @@ it only points out anything an older manifest was still carrying.`,
 		}
 		root := scratch.StableRoot(os.Getenv, home)
 
-		if err := os.MkdirAll(root, 0o755); err != nil {
+		if err := installBuild(source, root); err != nil {
 			return err
-		}
-
-		for _, name := range linked {
-			dst := filepath.Join(root, name)
-			// Replace rather than skip: an existing link points at wherever the
-			// last install was, which is the thing this command exists to fix.
-			if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			if err := os.Symlink(filepath.Join(source, name), dst); err != nil {
-				return err
-			}
 		}
 
 		dst := filepath.Join(root, manifest)
@@ -112,12 +96,69 @@ it only points out anything an older manifest was still carrying.`,
 	},
 }
 
-// buildRoot is the directory this build's files sit in, spelled so it keeps
-// resolving after an upgrade.
+// installBuild puts this release's copy of every entry the plugin needs into
+// the directory herdr records, replacing whatever the last one left there.
+//
+// Copies rather than symlinks into the build, because the build is where the
+// package manager staged it and every package manager numbers that directory by
+// version. A link into one is dead the moment the version changes; a copy is
+// only as stale as the last run of this command.
+func installBuild(source, root string) error {
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	// Opened once and written through, rather than joining each destination by
+	// hand, so an entry can only ever land inside the directory this plugin
+	// owns.
+	owned, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = owned.Close() }()
+
+	for _, name := range installed {
+		// Replace outright rather than merge into: what is here is the previous
+		// release's copy, and os.CopyFS refuses to write over a file that
+		// already exists.
+		if err := owned.RemoveAll(name); err != nil {
+			return err
+		}
+		if err := installEntry(owned, filepath.Join(source, name), name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// installEntry copies one entry of the build into the directory this plugin
+// owns: a file as itself, a directory as a tree.
+//
+// Both spellings carry the source's permission bits across, which is what keeps
+// bin/herdr-scratch executable — the manifest's pane command execs it directly.
+// Only the file can go through owned; os.CopyFS takes a path, so the tree is
+// joined against the same root rather than written through it.
+func installEntry(owned *os.Root, src, name string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return os.CopyFS(filepath.Join(owned.Name(), name), os.DirFS(src))
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return owned.WriteFile(name, data, info.Mode().Perm())
+}
+
+// buildRoot is the directory this build's files sit in.
 //
 // os.Executable reports the path the binary was invoked by, and Homebrew puts a
 // symlink on PATH — the manifest and tmux.conf sit beside the target of that
-// link, not beside the link.
+// link, not beside the link. Nothing rewrites the result: it is only ever read
+// from, never recorded, so a versioned staging directory serves as well as any
+// other.
 func buildRoot() (string, error) {
 	self, err := os.Executable()
 	if err != nil {
@@ -127,7 +168,7 @@ func buildRoot() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return scratch.StableSource(filepath.Dir(filepath.Dir(self))), nil // <root>/bin/herdr-scratch
+	return filepath.Dir(filepath.Dir(self)), nil // <root>/bin/herdr-scratch
 }
 
 func init() {
