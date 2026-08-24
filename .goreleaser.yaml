@@ -1,0 +1,107 @@
+# Builds the release artifacts and publishes the Homebrew cask that installs
+# them. Releases are cut from a laptop rather than CI, so README.md's Releasing
+# section carries the half this file cannot: the tag, the token, and the checks a
+# cask has no `test do` to make for us.
+# https://goreleaser.com
+version: 2
+project_name: herdr-scratch
+before:
+  hooks:
+    - go mod download
+    # herdr reads the manifest's own `version`, not the tag, so a tag that
+    # disagrees with it publishes a release claiming to be a version nobody can
+    # see. Fail before the artifacts exist rather than after they are on GitHub.
+    - ./.mise/tasks/version-check {{ .Version }} {{ .IsSnapshot }}
+builds:
+  - env:
+      # Every release cross-compiles three of its four targets from one machine.
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    # What the tap formula stamped, kept verbatim: -s -w is what std_go_args
+    # passed by default, and main.version is what `herdr-scratch --version`
+    # reports. Anything that stops stamping leaves it reporting "dev" forever.
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    # A path, not just a name — archives keep it, since strip_binary_directory
+    # is off by default. `herdr-scratch link` copies bin/, tmux.conf, shell/ and
+    # the manifest out of Dir(Dir(argv[0])), so a binary at the archive root
+    # would leave the extracted tree one level short and link would fail on a
+    # bare `stat .../bin: no such file or directory`.
+    binary: bin/herdr-scratch
+archives:
+  # Naming `files` replaces goreleaser's defaults rather than adding to them, so
+  # LICENSE is listed back explicitly — MIT requires the notice travel with the
+  # binary — and README.md with it. The other three, beside bin/, are what makes
+  # the extracted tree a plugin root herdr can actually load.
+  #
+  # `shell` names the directory rather than a glob under it. A `shell/**/*` here
+  # matches nothing — ** wants at least one directory to stand for, and the only
+  # file in there sits directly inside — and goreleaser reports that as a log
+  # line rather than an error, so the archive would just quietly ship without
+  # the shell integration.
+  - files:
+      - herdr-plugin.toml
+      - tmux.conf
+      - shell
+      - LICENSE
+      - README.md
+homebrew_casks:
+  # A cask rather than a formula, because the archive already holds a built
+  # binary and goreleaser's `brews` is soft-deprecated in favour of this. Its
+  # sha256 per architecture is read from the checksums.txt goreleaser generates
+  # by default, so a prebuilt binary is integrity-checked the way building from
+  # source never needed to be.
+  #
+  # Casks are macOS-only — Homebrew on Linux refuses to install one at all — so
+  # the linux archives above are for `herdr plugin install` and by-hand
+  # extraction. There is no brew path on Linux, and no arrangement of this block
+  # creates one.
+  - repository:
+      owner: macintacos
+      name: homebrew-tap
+    homepage: https://github.com/macintacos/herdr-scratch
+    description: Scratch shell popup for herdr that detaches instead of closing
+    license: MIT
+    # Spelled out because goreleaser derives the cask's `binary` stanza from the
+    # base name alone, which would point Homebrew at a herdr-scratch sitting at
+    # the top of the staged directory — where the archive deliberately does not
+    # put it. The symlink it makes still lands on PATH as `herdr-scratch`; only
+    # its target changes.
+    binaries:
+      - bin/herdr-scratch
+    # Not optional, either of them. herdr is what loads the plugin, and tmux is
+    # what keeps the shell alive and the screen intact between one press of the
+    # chord and the next.
+    dependencies:
+      - formula: herdr
+      - formula: tmux
+    # The formula's caveats, carried over.
+    caveats: |
+      Register the plugin with herdr. Run it again after every upgrade:
+
+        herdr-scratch link
+
+      Then bind a key in ~/.config/herdr/config.toml:
+
+        [[keys.command]]
+        key         = "prefix+'"
+        type        = "plugin_action"
+        command     = "user.scratch.toggle"
+        description = "scratch shell"
+
+      and apply it with:
+
+        herdr server reload-config
+    hooks:
+      post:
+        # Homebrew quarantines whatever a cask downloads, and macOS refuses to
+        # run a quarantined binary from a developer it cannot identify. Only
+        # this copy is affected: `herdr-scratch link` copies the tree with plain
+        # reads and writes, which carry no extended attributes, so the build the
+        # popup runs comes out clean regardless. This is the copy you type
+        # `herdr-scratch link` with, which makes it the one that has to run.
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bin/herdr-scratch"]
+          end
