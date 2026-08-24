@@ -1,7 +1,7 @@
 # Builds the release artifacts and publishes the Homebrew cask that installs
-# them. Releases are cut from a laptop rather than CI, so README.md's Releasing
-# section carries the half this file cannot: the tag, the token, and the checks a
-# cask has no `test do` to make for us.
+# them. Releases are cut from a laptop rather than CI, so docs/RELEASING.md
+# carries the half this file cannot: the tag, the token, and the checks a cask
+# has no `test do` to make for us.
 # https://goreleaser.com
 version: 2
 project_name: herdr-scratch
