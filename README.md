@@ -2,7 +2,7 @@
 
 A scratch shell for [herdr](https://herdr.dev), in a popup you toggle with one chord.
 
-![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/scratch-popup.png)
+![A herdr session with the scratch popup open over it — a bordered window titled "scratch", running a shell in the pane's own directory.](docs/assets/scratch-popup.png)
 
 Press <kbd>prefix</kbd> + <kbd>'</kbd> and a shell opens over whatever you were doing,
 starting in that pane's directory. Press it again and the popup goes away — but the shell
