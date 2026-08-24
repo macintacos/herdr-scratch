@@ -191,8 +191,16 @@ and `herdr server reload-config`.
 ## Troubleshooting
 
 > [!TIP]
-> `herdr-scratch --version` reports the build herdr is actually loading. Worth checking
-> first when what you see does not match what is documented here.
+> Worth checking first when what you see does not match what is documented here: which
+> build is herdr actually loading?
+>
+> ```sh
+> "${XDG_DATA_HOME:-$HOME/.local/share}"/herdr-scratch/bin/herdr-scratch --version
+> ```
+>
+> Ask that copy, not the `herdr-scratch` on your PATH. The one on PATH is whatever
+> Homebrew installed most recently; the one above is what `link` last put where herdr
+> reads it, and the gap between them is exactly what a missed re-link looks like.
 
 **The chord opens the popup but will not close it.** Almost always
 [`dismiss`](#configuring) not matching the chord you press. If you upgraded recently,
@@ -221,8 +229,9 @@ directory the next upgrade deletes. Run `herdr-scratch link` to move the registr
 somewhere that survives.
 
 **The popup runs a release you already upgraded past.** `herdr-scratch link` copies the
-build rather than pointing at it, so a new one reaches herdr only when you re-run it.
-`herdr-scratch --version` reports which build herdr is actually loading.
+build rather than pointing at it, so a new one reaches herdr only when you re-run it. The
+version check in the tip above is the one that shows this — `herdr-scratch --version` on
+its own asks the copy on your PATH, which is already the new build and so never disagrees.
 
 **Nothing at all happens when you press it.** Read the log — keypresses have nowhere else
 to report:
@@ -243,7 +252,7 @@ command = ["./bin/herdr-scratch", "--debug", "toggle"]
 
 ```sh
 go build -o bin/herdr-scratch .   # what `herdr plugin install` runs for you
-go test ./...                     # the decision logic in internal/scratch
+go test ./...                     # the logic under test
 herdr plugin link "$PWD"          # point herdr at this checkout
 ```
 

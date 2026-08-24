@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// stageBuild writes a build tree of the shape `link` copies out of — the binary
-// under bin/, the tmux config beside it, the shell integration under shell/ —
-// and returns the directory holding it.
+// stageBuild writes a build tree of the shape `link` copies out of, into dir:
+// the binary under bin/, the tmux config beside it, the shell integration under
+// shell/.
 //
 // Every file carries the marker, so a test can tell one release's copy from the
 // next without caring what is actually in them.
-func stageBuild(t *testing.T, dir, marker string) string {
+func stageBuild(t *testing.T, dir, marker string) {
 	t.Helper()
 	for path, mode := range map[string]os.FileMode{
 		filepath.Join("bin", "herdr-scratch"):        0o755,
@@ -27,17 +27,23 @@ func stageBuild(t *testing.T, dir, marker string) string {
 			t.Fatal(err)
 		}
 	}
-	return dir
 }
 
-// read is the installed copy of one entry, as bytes and mode.
-func read(t *testing.T, path string) (string, os.FileMode) {
+// readInstalled is the installed copy of one entry, as bytes and mode.
+//
+// Lstat rather than Stat, and a real-file assertion before either: os.Stat
+// reports the target's mode through a symlink, so every check built on it would
+// pass just as happily against the symlinks this change exists to replace.
+func readInstalled(t *testing.T, path string) (string, os.FileMode) {
 	t.Helper()
-	data, err := os.ReadFile(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
+	if !info.Mode().IsRegular() {
+		t.Fatalf("%s is %v, want a real file rather than something that resolves to one", path, info.Mode())
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,15 +54,78 @@ func TestInstallBuildKeepsTheBinaryExecutable(t *testing.T) {
 	// The manifest's pane command execs $HERDR_PLUGIN_ROOT/bin/herdr-scratch
 	// directly, so a copy that lost the execute bit is a popup that never
 	// opens.
-	source := stageBuild(t, filepath.Join(t.TempDir(), "build"), "0.9.0")
+	source := filepath.Join(t.TempDir(), "build")
+	stageBuild(t, source, "0.9.0")
 	root := filepath.Join(t.TempDir(), "herdr-scratch")
 
 	if err := installBuild(source, root); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, mode := read(t, filepath.Join(root, "bin", "herdr-scratch")); mode&0o111 == 0 {
+	if _, mode := readInstalled(t, filepath.Join(root, "bin", "herdr-scratch")); mode&0o111 == 0 {
 		t.Errorf("installed binary mode = %v, want the execute bits set", mode)
+	}
+}
+
+func TestInstallBuildReplacesTheSymlinksAnOlderReleaseLeft(t *testing.T) {
+	// Releases up to 0.5.0 symlinked these entries into the build, so every
+	// upgrade to this one starts from links rather than from copies. Removing
+	// one has to unlink it and leave the build it points at alone — following
+	// it would delete the Homebrew install the link resolves into.
+	build := filepath.Join(t.TempDir(), "opt", "herdr-scratch")
+	stageBuild(t, build, "0.5.0")
+	root := filepath.Join(t.TempDir(), "herdr-scratch")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range installed {
+		if err := os.Symlink(filepath.Join(build, name), filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := installBuild(build, root); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(build, "bin", "herdr-scratch")); err != nil {
+		t.Errorf("the build the old links pointed at lost a file: %v", err)
+	}
+	for _, name := range installed {
+		if _, err := os.Lstat(filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// readInstalled fails anything that is not a real file, so this is the
+	// assertion that the link became a copy.
+	if got, _ := readInstalled(t, filepath.Join(root, "tmux.conf")); got != "0.5.0" {
+		t.Errorf("tmux.conf = %q, want %q", got, "0.5.0")
+	}
+}
+
+func TestInstallBuildRefusesToInstallOverItself(t *testing.T) {
+	// The installed copy is a runnable build, so `link` can be invoked from it.
+	// Left unguarded that removes each entry just before copying from it, which
+	// empties the directory the popup runs out of.
+	root := filepath.Join(t.TempDir(), "herdr-scratch")
+	stageBuild(t, root, "1.0.0")
+
+	// Spelled two ways as well as one. buildRoot resolves the source through
+	// EvalSymlinks while root keeps whatever XDG_DATA_HOME said, so a guard that
+	// compares them as written misses the real case entirely — on macOS the two
+	// spellings of a temp directory differ by /var -> /private/var.
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, source := range []string{root, alias} {
+		if err := installBuild(source, root); err == nil {
+			t.Errorf("installBuild(%q, root) = nil, want an error rather than a wiped plugin root", source)
+		}
+		if got, _ := readInstalled(t, filepath.Join(root, "bin", "herdr-scratch")); got != "1.0.0" {
+			t.Fatalf("the binary was disturbed by installBuild(%q, root): %q, want %q", source, got, "1.0.0")
+		}
 	}
 }
 
@@ -68,8 +137,14 @@ func TestInstallBuildSurvivesTheStagingDirectoryBeingReplaced(t *testing.T) {
 	caskroom := filepath.Join(t.TempDir(), "Caskroom", "herdr-scratch")
 	root := filepath.Join(t.TempDir(), "herdr-scratch")
 
-	staged := stageBuild(t, filepath.Join(caskroom, "1.0.0"), "1.0.0")
+	staged := filepath.Join(caskroom, "1.0.0")
+	stageBuild(t, staged, "1.0.0")
 	if err := installBuild(staged, root); err != nil {
+		t.Fatal(err)
+	}
+	// An entry this release ships and the next one drops, to prove the install
+	// replaces each tree outright rather than merging into what is there.
+	if err := os.WriteFile(filepath.Join(root, "shell", "gone.fish"), []byte("1.0.0"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -83,7 +158,7 @@ func TestInstallBuildSurvivesTheStagingDirectoryBeingReplaced(t *testing.T) {
 		"tmux.conf",
 		filepath.Join("shell", "herdr-scratch.fish"),
 	} {
-		if got, _ := read(t, filepath.Join(root, entry)); got != "1.0.0" {
+		if got, _ := readInstalled(t, filepath.Join(root, entry)); got != "1.0.0" {
 			t.Errorf("%s = %q after the staging directory was replaced, want %q", entry, got, "1.0.0")
 		}
 	}
@@ -93,8 +168,11 @@ func TestInstallBuildSurvivesTheStagingDirectoryBeingReplaced(t *testing.T) {
 	if err := installBuild(filepath.Join(caskroom, "1.1.0"), root); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := read(t, filepath.Join(root, "bin", "herdr-scratch")); got != "1.1.0" {
+	if got, _ := readInstalled(t, filepath.Join(root, "bin", "herdr-scratch")); got != "1.1.0" {
 		t.Errorf("binary = %q after re-linking, want %q", got, "1.1.0")
+	}
+	if _, err := os.Lstat(filepath.Join(root, "shell", "gone.fish")); !os.IsNotExist(err) {
+		t.Errorf("shell/gone.fish survived the release that dropped it: %v", err)
 	}
 }
 
@@ -107,27 +185,28 @@ func TestInstallBuildDoesNotCareWhatShapeTheSourcePathHas(t *testing.T) {
 		"checkout": filepath.Join("Users", "me", ".config", "herdr", "scratch"),
 	}
 
-	installed := map[string]map[string]string{}
+	trees := map[string]map[string]string{}
 	for name, shape := range shapes {
-		source := stageBuild(t, filepath.Join(t.TempDir(), shape), "2.0.0")
+		source := filepath.Join(t.TempDir(), shape)
+		stageBuild(t, source, "2.0.0")
 		root := filepath.Join(t.TempDir(), "herdr-scratch")
 		if err := installBuild(source, root); err != nil {
 			t.Fatal(err)
 		}
-		installed[name] = walk(t, root)
+		trees[name] = walk(t, root)
 	}
 
-	if len(installed["homebrew"]) == 0 {
+	if len(trees["homebrew"]) == 0 {
 		t.Fatal("nothing was installed, so the comparison below proves nothing")
 	}
-	for entry, want := range installed["checkout"] {
-		if got := installed["homebrew"][entry]; got != want {
+	for entry, want := range trees["checkout"] {
+		if got := trees["homebrew"][entry]; got != want {
 			t.Errorf("%s = %q from a Homebrew-shaped source, want %q as from a checkout", entry, got, want)
 		}
 	}
-	if len(installed["homebrew"]) != len(installed["checkout"]) {
+	if len(trees["homebrew"]) != len(trees["checkout"]) {
 		t.Errorf("installed %d entries from a Homebrew-shaped source, want the %d a checkout installs",
-			len(installed["homebrew"]), len(installed["checkout"]))
+			len(trees["homebrew"]), len(trees["checkout"]))
 	}
 }
 
@@ -144,7 +223,7 @@ func walk(t *testing.T, root string) map[string]string {
 		if err != nil {
 			return err
 		}
-		data, mode := read(t, path)
+		data, mode := readInstalled(t, path)
 		tree[rel] = data + " " + mode.String()
 		return nil
 	})
