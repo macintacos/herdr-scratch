@@ -25,7 +25,7 @@ $EDITOR herdr-plugin.toml                      # bump `version` to the tag you a
 git add herdr-plugin.toml && git commit -m "chore: 0.6.0" && git push
 git status --porcelain                         # must be empty, untracked files included
 git tag -a v0.6.0 -m v0.6.0 && git push origin v0.6.0
-GITHUB_TOKEN=$(gh auth token) mise exec -- goreleaser release \
+GITHUB_TOKEN=$(mise exec -- gh auth token) mise exec -- goreleaser release \
   --clean --release-notes /tmp/release-notes-v0.6.0.md
 ```
 
@@ -50,7 +50,7 @@ anything.
 create the release, `macintacos/homebrew-tap` to commit the cask. A classic PAT with
 `repo` scope covers it, as does a fine-grained token scoped to the two. goreleaser reads
 `GITHUB_TOKEN`, so it lives in the environment for exactly one command and is never
-committed; `$(gh auth token)` is enough when `gh` is already authenticated.
+committed; `$(mise exec -- gh auth token)` is enough when `gh` is already authenticated.
 
 **Rehearse first.** `goreleaser release --snapshot --clean --skip=publish` builds all four
 targets into `dist/` and renders the cask to `dist/homebrew/Casks/herdr-scratch.rb`

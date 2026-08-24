@@ -68,12 +68,13 @@ mise exec -- goreleaser check       # the config still validates
 git branch --show-current           # trunk
 git status --porcelain              # empty — including untracked files
 git fetch --prune --prune-tags origin && git rev-parse HEAD origin/trunk   # identical SHAs
-gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].name'
+mise exec -- gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].name'
 ```
 
-- **goreleaser or svu missing** → the tool is pinned in [mise.toml](../../../mise.toml),
-  so this means mise has not installed it. Say `mise install` and stop; do not fall back
-  to a system copy, which is not the pinned version.
+- **goreleaser, svu or gh missing** → the tool is pinned in
+  [mise.toml](../../../mise.toml), so this means mise has not installed it. Say
+  `mise install` and stop; do not fall back to a system copy, which is not the pinned
+  version.
 - **Not on `trunk`, dirty, or ahead of / behind `origin/trunk`** → stop. A release is cut
   from the default branch's tip; a tag on anything else points at a tree nobody reviewed.
   *Dirty* means what goreleaser means by it: `git status --porcelain` empty,
@@ -86,9 +87,10 @@ gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].name'
   `origin/trunk`, so there is no legitimate unpushed local tag to lose.
 - **The token.** goreleaser reads `GITHUB_TOKEN` and it needs contents write on **both**
   `macintacos/herdr-scratch` (to create the release) and `macintacos/homebrew-tap` (to
-  commit the cask). `$(gh auth token)` covers it when `gh` is authenticated. If neither
-  `$GITHUB_TOKEN` nor `gh auth token` yields one, stop and say exactly that — do not start
-  a sequence that will fail at its last and least recoverable step.
+  commit the cask). `$(mise exec -- gh auth token)` covers it when `gh` is authenticated.
+  If neither `$GITHUB_TOKEN` nor `mise exec -- gh auth token` yields one, stop and say
+  exactly that — do not start a sequence that will fail at its last and least recoverable
+  step.
 - **`herdr-scratch.rb` appears in that `Formula` listing** → **stop.** goreleaser writes
   `Casks/herdr-scratch.rb` and leaves the formula alone, and while both exist Homebrew
   resolves the bare `herdr-scratch` token to the **formula** and keeps building from
@@ -202,7 +204,8 @@ git status --porcelain
 git tag -a <tag> -m <tag> && git push origin <tag>
 
 # 7. Build, publish the release, commit the cask.
-GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token)}" mise exec -- goreleaser release \
+GITHUB_TOKEN="${GITHUB_TOKEN:-$(mise exec -- gh auth token)}" \
+  mise exec -- goreleaser release \
   --clean --release-notes <notes>
 ```
 
@@ -242,16 +245,16 @@ A failure partway through `goreleaser release` is the one worth spelling out, be
 can leave three things behind and they must come off in order:
 
 ```sh
-gh release delete <tag> --yes             # if it got as far as creating one
-git push --delete origin <tag>            # then the remote tag
-git tag -d <tag>                          # then the local one
+mise exec -- gh release delete <tag> --yes   # if it got as far as creating one
+git push --delete origin <tag>               # then the remote tag
+git tag -d <tag>                             # then the local one
 ```
 
 Check the tap as well —
-`gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'`, listing the
-directory rather than probing the file for the same reason § Preconditions does. If
-goreleaser committed the cask before failing, it now points at a release that does not
-exist and `brew install --cask` will 404 for anyone who tries.
+`mise exec -- gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'`,
+listing the directory rather than probing the file for the same reason § Preconditions
+does. If goreleaser committed the cask before failing, it now points at a release that
+does not exist and `brew install --cask` will 404 for anyone who tries.
 
 **Retrying the same version needs no tap edit** — the next run rewrites
 `Casks/herdr-scratch.rb` from scratch. Reverting that commit by hand is only for a version

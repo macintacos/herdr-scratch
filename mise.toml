@@ -41,6 +41,12 @@ goreleaser = "latest"
 # quietly change what gets tagged.
 svu = "3.4.1"
 
+# The GitHub client. Only release work uses it here — minting the token
+# goreleaser publishes with, and listing the tap's contents — but those steps
+# depend on it, so it is pinned alongside them rather than assumed to be on the
+# machine. Unpinned like the baseline; mise.lock fixes what `latest` resolved to.
+gh = "latest"
+
 # (Re)register git hooks whenever tools are installed or updated.
 [hooks]
 postinstall = "hk install --mise"
