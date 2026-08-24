@@ -312,8 +312,12 @@ checksums and generated notes, and commits the cask to
 $EDITOR herdr-plugin.toml                      # bump `version` to the tag you are cutting
 git commit -am "chore: 0.6.0" && git push
 git tag -a v0.6.0 -m v0.6.0 && git push origin v0.6.0
-GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+GITHUB_TOKEN=$(gh auth token) mise exec -- goreleaser release --clean
 ```
+
+**Through `mise exec`** because the `before:` hook execs `taplo`, which reaches it only
+through the `PATH` goreleaser inherited. Activated mise has it; `mise exec` has it either
+way — the same reason `HK_MISE` routes hk's hook steps through mise.
 
 The bump comes first because a `before:` hook compares `herdr-plugin.toml` against the tag
 and fails the release when they disagree. herdr reads the manifest's version rather than
