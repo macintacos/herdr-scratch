@@ -33,6 +33,14 @@ golangci-lint = "2.13.1"
 # because mise.lock already fixes whatever `latest` resolved to.
 goreleaser = "latest"
 
+# Decides the next version, so that nothing has to infer one: `svu
+# patch|minor|major` reads the last tag and prints the next one, which is what
+# the release skill in .claude/skills/ tags. Pinned rather than `latest`, unlike
+# goreleaser above — this is the one tool whose output is acted on without a
+# human re-deriving it, so a release that changed how it increments would
+# quietly change what gets tagged.
+svu = "3.4.1"
+
 # (Re)register git hooks whenever tools are installed or updated.
 [hooks]
 postinstall = "hk install --mise"
