@@ -104,9 +104,8 @@ homebrew_casks:
 
         herdr server reload-config
 
-      Installing registered the plugin with herdr, and every upgrade
-      re-registers itself. If the popup ever runs a build you have already
-      upgraded past:
+      Installing and upgrading register this build with herdr for you. If the
+      popup ever runs a build you have already upgraded past:
 
         herdr-scratch link
     hooks:
@@ -123,42 +122,42 @@ homebrew_casks:
         # it fails rather than runs. goreleaser's own docs ship the guard for
         # that reason — a cask that cannot strip the attribute should still
         # install.
+        #
+        # `link` then registers the build, which is what makes `brew upgrade`
+        # deliver it rather than leaving herdr on the release before. Four
+        # details of that call, none of them padding:
+        #
+        # In a cask block `system_command` delegates to SystemCommand.run!,
+        # which raises by default, so `must_succeed: false` is what keeps a
+        # failed registration from taking `brew upgrade` down with it.
+        #
+        # bin/brew filters its child environment to an allow-list and forces
+        # PATH=/usr/bin:/bin:/usr/sbin:/sbin, so the Homebrew prefix is not on
+        # the PATH the hook inherits and `link`'s bare `herdr` lookup would fail
+        # on every install. cmd/root.go reads HERDR_BIN_PATH ahead of PATH, so
+        # the hook names herdr through that existing seam.
+        #
+        # print_stdout because system_command swallows stdout, and `link`'s
+        # `installed <root> from <source>` line is the only thing that makes the
+        # hook visible at all. It also carries the one-time notice listing
+        # settings an older manifest was still holding.
+        #
+        # That same allow-list drops XDG_DATA_HOME, XDG_CONFIG_HOME and
+        # XDG_STATE_HOME, and nothing inside brew can recover them. On a machine
+        # that sets any of them the hook installs under $HOME, points herdr's
+        # registration there, and prints the non-XDG config path in a migration
+        # notice. Running `herdr-scratch link` by hand moves all three back —
+        # until the next upgrade moves them again.
         install: |
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bin/herdr-scratch"]
           end
-          # Then register the build, so `brew upgrade --cask` delivers it instead
-          # of leaving herdr on the release before. The order is fixed, not
-          # incidental: this runs the very binary the strip above just cleaned,
-          # and macOS will not run a quarantined one at all.
-          #
-          # `must_succeed: false` is load-bearing rather than defensive. In a
-          # cask block `system_command` delegates to SystemCommand.run!, which
-          # raises by default, so a failed registration would take the whole
-          # `brew upgrade` down with it — when the install itself is fine and
-          # only the registration needs redoing by hand.
-          #
-          # HERDR_BIN_PATH is required for the same kind of reason: bin/brew
-          # scrubs its own environment down to PATH=/usr/bin:/bin:/usr/sbin:/sbin,
-          # so the Homebrew prefix is not on the PATH this child inherits and
-          # `link`'s bare `herdr` lookup would fail on every install. cmd/root.go
-          # already reads this variable ahead of PATH, so the hook names herdr
-          # through that seam rather than rebuilding a PATH.
-          #
-          # print_stdout because system_command swallows stdout otherwise, and
-          # `link` is the only thing that prints the notice listing settings an
-          # older manifest is still carrying. Running it from a hook must not be
-          # the reason that notice goes unseen.
-          #
-          # The same scrub drops XDG_DATA_HOME, and nothing inside brew can
-          # recover it, so on a machine that sets it the hook installs to the
-          # default $HOME/.local/share/herdr-scratch rather than the root the
-          # user's own `herdr-scratch link` would use. That is what `link`
-          # surviving as the repair path is for.
+          # Registration runs second because it executes the binary the strip
+          # above just cleaned, and macOS will not run a quarantined one at all.
           linked = system_command "#{staged_path}/bin/herdr-scratch", args: ["link"],
                                   env: { "HERDR_BIN_PATH" => "#{HOMEBREW_PREFIX}/bin/herdr" },
                                   must_succeed: false, print_stdout: true
           unless linked.success?
-            opoo "herdr-scratch link failed, so herdr is still loading the previous build. " \
-                 "Run `herdr-scratch link` to register this one."
+            opoo "herdr-scratch link failed, so herdr is not running this build. " \
+                 "Run `herdr-scratch link` to register it."
           end

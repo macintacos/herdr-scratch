@@ -34,9 +34,14 @@ including a prebuilt tarball, so Linux does not have to compile either.
 
 The cask registers the build with herdr from its post-install hook, so an upgrade needs
 nothing from you: `brew upgrade --cask herdr-scratch` copies the new release into the
-directory herdr records — a directory no upgrade can delete, which is the point — and
-herdr loads it from the next restart. `herdr-scratch link` does that same registration by
-hand, for a hook that failed or an install that did not come from the cask.
+directory herdr records — a directory no upgrade can delete, which is the point.
+`herdr-scratch link` does that same registration by hand, for a hook that failed or an
+install that did not come from the cask.
+
+One exception, if you set them: Homebrew strips `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and
+`XDG_STATE_HOME` out of the environment it runs hooks in, so the hook uses the `$HOME`
+defaults rather than your paths. Running `herdr-scratch link` yourself puts all three back
+where you asked for them, and the next upgrade moves them again.
 
 > [!IMPORTANT]
 > Re-run `herdr-scratch link` after upgrading to 0.5.0. Settings moved out of the plugin's
@@ -230,8 +235,9 @@ and `herdr server reload-config`.
 > reads it, and the gap between them is exactly what a missed re-link looks like.
 
 **The chord opens the popup but will not close it.** Almost always
-[`dismiss`](#configuring) not matching the chord you press. If you upgraded recently,
-re-run `herdr-scratch link`.
+[`dismiss`](#configuring) not matching the chord you press. If you upgraded recently, the
+cask's hook may not have installed the new manifest — run `herdr-scratch link` to install
+it by hand.
 
 **The popup opens and closes immediately.** tmux failed to start, or the binary is
 missing. If you linked a local checkout, run `go build -o bin/herdr-scratch .` in it —
@@ -256,10 +262,12 @@ directory the next upgrade deletes. Run `herdr-scratch link` to move the registr
 somewhere that survives.
 
 **The popup runs a release you already upgraded past.** The cask's post-install hook
-registers each build, so seeing this means the hook did not run — or the install did not
-come from the cask. Run `herdr-scratch link` to register the build on your PATH. The
-version check in the tip above is the one that shows this — `herdr-scratch --version` on
-its own asks the copy on your PATH, which is already the new build and so never disagrees.
+registers each build, so seeing this means the hook did not run, the install did not come
+from the cask, or you set `XDG_DATA_HOME` — which Homebrew does not pass to the hook, so
+it registered `~/.local/share/herdr-scratch` instead of yours. Run `herdr-scratch link` to
+register the build on your PATH. The version check in the tip above is the one that shows
+this — `herdr-scratch --version` on its own asks the copy on your PATH, which is already
+the new build and so never disagrees.
 
 **Nothing at all happens when you press it.** Read the log — keypresses have nowhere else
 to report:

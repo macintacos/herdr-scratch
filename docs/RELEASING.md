@@ -62,12 +62,15 @@ cask has no equivalent, so these are yours:
 ```sh
 brew install --cask macintacos/tap/herdr-scratch
 herdr-scratch --version   # the tag you just cut — "dev" means the ldflags stamp broke
-"${XDG_DATA_HOME:-$HOME/.local/share}"/herdr-scratch/bin/herdr-scratch --version
+"$HOME"/.local/share/herdr-scratch/bin/herdr-scratch --version
 ```
 
 The two versions agreeing is the check: nothing was run between them, so it is the
-post-install hook that registered the build. A disagreement means the hook did not run,
-and a `stat .../bin` in its output means the archive layout regressed.
+post-install hook that registered the build. `$HOME` is spelled out rather than
+`${XDG_DATA_HOME:-…}` because Homebrew strips `XDG_DATA_HOME` from the environment it runs
+hooks in, so the hook writes there whatever you have set. A disagreement means the hook
+did not run, and a `stat .../bin` error in the install's own output means the archive
+layout regressed.
 
 And once there is a previous release to come from, the upgrade rather than the install —
 `brew upgrade --cask herdr-scratch`, the same two versions agreeing with nothing run in
