@@ -26,14 +26,16 @@ git add herdr-plugin.toml && git commit -m "chore: 0.6.0" && git push
 git status --porcelain                         # must be empty, untracked files included
 git tag -a v0.6.0 -m v0.6.0 && git push origin v0.6.0
 GITHUB_TOKEN=$(gh auth token) mise exec -- goreleaser release \
-  --clean --release-notes notes.md
+  --clean --release-notes /tmp/release-notes-v0.6.0.md
 ```
 
 Stage the manifest by name rather than reaching for `commit -am`, and check the tree
 before tagging: goreleaser refuses to run on a tree with **any** uncommitted change,
-untracked files included, and it refuses at the last step — after the tag is public. Keep
-`notes.md` outside the repo for that same reason. Dropping `--release-notes` is fine too;
-goreleaser then generates the notes from the commit log itself.
+untracked files included, and it refuses at the last step — after the tag is public. The
+notes file is written to `/tmp` for that same reason: drafted in the repo root it would be
+one more untracked file, and it would fail the release at exactly that point. Dropping
+`--release-notes` is fine too; goreleaser then generates the notes from the commit log
+itself.
 
 **Through `mise exec`** because the `before:` hook execs `taplo` and inherits only
 goreleaser's own `PATH` — activated mise has it, `mise exec` has it either way.
