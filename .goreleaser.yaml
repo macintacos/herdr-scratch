@@ -1,7 +1,7 @@
-# Builds the release artifacts and publishes the Homebrew cask that installs
-# them. Releases are cut from a laptop rather than CI, so docs/RELEASING.md
-# carries the half this file cannot: the tag, the token, and the checks a cask
-# has no `test do` to make for us.
+# Builds the release artifacts and publishes the Homebrew formula that installs
+# them, on macOS and Linux alike. Releases are cut from a laptop rather than CI,
+# so docs/RELEASING.md carries the half this file cannot: the tag, the token,
+# and the checks that need a real herdr session to make.
 # https://goreleaser.com
 version: 2
 project_name: herdr-scratch
@@ -19,25 +19,22 @@ builds:
       - CGO_ENABLED=0
     goos: [darwin, linux]
     goarch: [amd64, arm64]
-    # What the tap formula stamped, kept verbatim: -s -w is what std_go_args
-    # passed by default, and main.version is what `herdr-scratch --version`
-    # reports. This restates goreleaser's own default on purpose rather than
-    # inheriting it — the stamp is load-bearing, and a default that quietly
-    # changed would leave every release reporting "dev" with nothing to notice
-    # it by.
+    # -s -w is what a Homebrew formula's std_go_args passes by default, and
+    # main.version is what `herdr-scratch --version` reports. This restates
+    # goreleaser's own default on purpose rather than inheriting it — the stamp
+    # is load-bearing, and a default that quietly changed would leave every
+    # release reporting "dev" with nothing to notice it by.
     ldflags:
       - -s -w -X main.version={{ .Version }}
-    # A path, not just a name. `herdr-scratch link` copies bin/, tmux.conf,
-    # shell/ and the manifest out of two directories above the *resolved*
-    # executable — Dir(Dir(EvalSymlinks(os.Executable()))), cmd/link.go's
-    # buildRoot — and it is that EvalSymlinks which turns the cask's PATH
-    # symlink into the staged Caskroom root. A binary at the archive root would
-    # leave the extracted tree one level short, and link would fail on a bare
-    # `stat .../bin: no such file or directory`.
+    # A path, not just a name: it is what makes the extracted archive a plugin
+    # root herdr can load — `bin/herdr-scratch` beside herdr-plugin.toml,
+    # tmux.conf and shell/, the layout the manifest's actions assume when they
+    # exec `./bin/herdr-scratch`. A binary at the archive root would leave the
+    # tree one level short and herdr would find no manifest beside it.
     #
     # Two defaults hold this up, so leave both alone: strip_binary_directory
     # would flatten the path back out of the archive, and wrap_in_directory
-    # would nest the tree one level deeper than the cask's binary stanza looks.
+    # would nest the tree one level deeper than the `install` stanza looks.
     binary: bin/herdr-scratch
 archives:
   # Naming `files` replaces goreleaser's defaults rather than adding to them, so
@@ -56,41 +53,110 @@ archives:
       - shell
       - LICENSE
       - README.md
-homebrew_casks:
-  # A cask rather than a formula, because the archive already holds a built
-  # binary and goreleaser's `brews` is soft-deprecated in favour of this. Its
-  # sha256 per architecture is read from the checksums.txt goreleaser generates
-  # by default. The formula pinned a sha256 too — on the source tarball — so
-  # what changed is not that there is a checksum but what it covers: the binary
-  # the user actually runs, rather than the source someone else's toolchain
-  # rebuilt.
+brews:
+  # A formula rather than a cask, because a cask is macOS-only — Homebrew on
+  # Linux refuses to install one at all — and nothing in this plugin is
+  # OS-shaped. One formula is what gives Linux a brew path. Its sha256 per
+  # architecture is read from the checksums.txt goreleaser generates by default,
+  # so it covers the binary the user actually runs rather than source someone
+  # else's toolchain rebuilt.
   #
-  # Casks are macOS-only — Homebrew on Linux refuses to install one at all — so
-  # the linux archives above are for `herdr plugin install` and by-hand
-  # extraction. There is no brew path on Linux, and no arrangement of this block
-  # creates one.
+  # Three measured facts hold this shape up, and each one closes a door:
+  #
+  #   - post_install re-runs on `brew upgrade`, not only on install. That is
+  #     what lets the copy below stand in for the link step an upgrade used to
+  #     need, and it is why the cask's post-install hook is gone rather than
+  #     ported.
+  #   - post_install gets a throwaway $HOME on macOS — the install sandbox calls
+  #     deny_read_home — so it can never register anything with herdr there. It
+  #     reads a registry that does not exist and writes one that is deleted
+  #     moments later. Linux sandboxes differently and does hand it the real
+  #     $HOME, so registration could in principle be automated on that platform
+  #     alone; it deliberately is not, because one install story beats two.
+  #     Either way registration is a one-time user step, in the caveats.
+  #   - herdr records a plugin by the *resolved* directory holding its manifest.
+  #     Point it at opt/herdr-scratch and it records the Cellar path numbered by
+  #     version, which the next upgrade deletes — the exact failure this whole
+  #     arrangement exists to prevent. It gets share/herdr-scratch instead,
+  #     which is a real directory and is never renumbered.
+  #
+  # `brews` is deprecated as of goreleaser 2.16 in favour of `homebrew_casks`,
+  # which is macOS-only and so not a replacement for this. It survives until
+  # goreleaser v3 — deprecated options are removed only on majors — and
+  # .mise/tasks/goreleaser-check is what keeps the lint gate green until then.
   - repository:
       owner: macintacos
       name: homebrew-tap
+    # Spelled out because `brews` has no default for it, unlike `homebrew_casks`
+    # which defaults to Casks. Left unset the formula is committed to the tap
+    # root, where `Tap#formula_dir` still finds it only until something creates
+    # a Formula/ directory alongside it — and the tap already has one, holding
+    # Formula/herdr-reshape.rb, so this would fail from the first release with
+    # "No available formula" and nothing here explaining why.
+    directory: Formula
     homepage: https://github.com/macintacos/herdr-scratch
     description: Scratch shell popup for herdr that detaches instead of closing
     license: MIT
-    # Spelled out because goreleaser derives the cask's `binary` stanza from the
-    # base name alone, which would point Homebrew at a herdr-scratch sitting at
-    # the top of the staged directory — where the archive deliberately does not
-    # put it. The symlink it makes still lands on PATH as `herdr-scratch`; only
-    # its target changes.
-    binaries:
-      - bin/herdr-scratch
     # Not optional, either of them. herdr is what loads the plugin, and tmux is
     # what keeps the shell alive and the screen intact between one press of the
-    # chord and the next.
+    # chord and the next. Both are homebrew/core formulae bottled on macOS and
+    # Linux, so this resolves without a source build wherever bottles exist.
     dependencies:
-      - formula: herdr
-      - formula: tmux
-    # Registration is the post-install hook's job below, so what is left here is
-    # the one thing a cask cannot do for the user: bind a key. `link` closes the
-    # block as the repair path for a hook that did not run.
+      - name: herdr
+      - name: tmux
+    # libexec rather than a keg directory brew links into the prefix, so nothing
+    # here collides with keg linking and post_install below owns
+    # share/herdr-scratch outright. The archive is already a plugin root — bin/
+    # beside the manifest, tmux.conf and shell/ — and installing it whole keeps
+    # it one, which is what post_install copies out.
+    #
+    # All four entries, not just bin/ and the manifest: the popup starts tmux
+    # with tmux.conf, and fish sources shell/herdr-scratch.fish. Both resolve
+    # through HERDR_PLUGIN_ROOT, so they follow the registered root and need no
+    # path of their own.
+    #
+    # LICENSE lands in the keg rather than libexec: MIT requires the notice
+    # travel with the binary, and libexec holds exactly the plugin root that
+    # post_install copies.
+    install: |
+      libexec.install "bin", "herdr-plugin.toml", "tmux.conf", "shell"
+      bin.install_symlink libexec/"bin/herdr-scratch"
+      prefix.install "LICENSE"
+    # The whole answer to the upgrade constraint: a plugin root at a path no
+    # release renumbers, refreshed on every install and every upgrade. herdr is
+    # registered against it once and stays pointed there while the contents
+    # change underneath.
+    #
+    # Removing before the copy replaces rather than merges, so a file a release
+    # stopped shipping does not linger in the root forever — herdr would keep
+    # finding it, and nothing else would remove it. Both calls raise on failure,
+    # which brew surfaces as "The post-install step did not complete
+    # successfully" rather than leaving a half-refreshed root behind quietly.
+    # `rm_r` guarded by exist? rather than the shorter rm_rf: `brew audit
+    # --strict` rejects rm_rf outright, and the guard keeps a genuine removal
+    # failure loud instead of swallowed.
+    post_install: |
+      root = HOMEBREW_PREFIX/"share/herdr-scratch"
+      rm_r root if root.exist?
+      root.mkpath
+      cp_r [libexec/"bin", libexec/"herdr-plugin.toml", libexec/"tmux.conf", libexec/"shell"], root
+    # `brew audit --strict` refuses a formula with no test block, and this is
+    # the assertion worth putting in it: "dev" means the ldflags stamp broke and
+    # the release is misreporting its version to the one thing that reads it.
+    # Nothing runs on a tag — there is no CI and `brew test` is a separate
+    # command — so docs/RELEASING.md runs it by hand once per release.
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/herdr-scratch --version")
+    # No `custom_block` holding a `livecheck do skip` — goreleaser can only
+    # place custom_block after the platform blocks, where `brew audit --strict`
+    # rejects it: livecheck must precede depends_on. The audit is a gate
+    # docs/RELEASING.md runs, so it wins.
+    #
+    # A formula cannot bind a key, and it deliberately does not register the
+    # plugin either — post_install cannot reach the real herdr registry (see the
+    # header). So both steps are spelled out here. The registration is one-time:
+    # an upgrade rewrites what sits behind the path herdr recorded, so there is
+    # nothing to re-run.
     caveats: |
       Bind a key in ~/.config/herdr/config.toml:
 
@@ -104,60 +170,15 @@ homebrew_casks:
 
         herdr server reload-config
 
-      Installing and upgrading register this build with herdr for you. If the
-      popup ever runs a build you have already upgraded past:
+      Then register the plugin with herdr — once, not per upgrade.
+      Every upgrade refreshes what sits behind this path:
 
-        herdr-scratch link
-    hooks:
-      post:
-        # Homebrew quarantines whatever a cask downloads, and macOS refuses to
-        # run a quarantined binary from a developer it cannot identify. Only
-        # this copy is affected: `herdr-scratch link` copies the tree with plain
-        # reads and writes, which carry no extended attributes, so the build the
-        # popup runs comes out clean regardless. This is the copy the hook below
-        # runs `link` from, which makes it the one that has to run.
-        #
-        # The `-h` probe is not defensive padding: xattr was a /usr/bin/python3
-        # script until recently, and on a machine without the Command Line Tools
-        # it fails rather than runs. goreleaser's own docs ship the guard for
-        # that reason — a cask that cannot strip the attribute should still
-        # install.
-        #
-        # `link` then registers the build, which is what makes `brew upgrade`
-        # deliver it rather than leaving herdr on the release before. Four
-        # details of that call, none of them padding:
-        #
-        # In a cask block `system_command` delegates to SystemCommand.run!,
-        # which raises by default, so `must_succeed: false` is what keeps a
-        # failed registration from taking `brew upgrade` down with it.
-        #
-        # bin/brew filters its child environment to an allow-list and forces
-        # PATH=/usr/bin:/bin:/usr/sbin:/sbin, so the Homebrew prefix is not on
-        # the PATH the hook inherits and `link`'s bare `herdr` lookup would fail
-        # on every install. cmd/root.go reads HERDR_BIN_PATH ahead of PATH, so
-        # the hook names herdr through that existing seam.
-        #
-        # print_stdout because system_command swallows stdout, and `link`'s
-        # `installed <root> from <source>` line is the only thing that makes the
-        # hook visible at all. It also carries the one-time notice listing
-        # settings an older manifest was still holding.
-        #
-        # That same allow-list drops XDG_DATA_HOME, XDG_CONFIG_HOME and
-        # XDG_STATE_HOME, and nothing inside brew can recover them. On a machine
-        # that sets any of them the hook installs under $HOME, points herdr's
-        # registration there, and prints the non-XDG config path in a migration
-        # notice. Running `herdr-scratch link` by hand moves all three back —
-        # until the next upgrade moves them again.
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/bin/herdr-scratch"]
-          end
-          # Registration runs second because it executes the binary the strip
-          # above just cleaned, and macOS will not run a quarantined one at all.
-          linked = system_command "#{staged_path}/bin/herdr-scratch", args: ["link"],
-                                  env: { "HERDR_BIN_PATH" => "#{HOMEBREW_PREFIX}/bin/herdr" },
-                                  must_succeed: false, print_stdout: true
-          unless linked.success?
-            opoo "herdr-scratch link failed, so herdr is not running this build. " \
-                 "Run `herdr-scratch link` to register it."
-          end
+        herdr plugin link "$(brew --prefix)/share/herdr-scratch"
+
+      Removing it takes three steps, because brew owns only the
+      first: a formula has no zap, and herdr's registration
+      outlives the uninstall either way.
+
+        brew uninstall herdr-scratch
+        herdr plugin unlink user.scratch
+        rm -rf "$(brew --prefix)/share/herdr-scratch"
