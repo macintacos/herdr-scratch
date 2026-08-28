@@ -27,10 +27,9 @@ rumdl                 = "latest" # Markdown lint + format (config in .rumdl.toml
 go            = "latest"
 golangci-lint = "2.13.1"
 
-# Release engineering — builds the artifacts and publishes the tap cask (config
-# in .goreleaser.yaml). 2.10 is the floor: `homebrew_casks` arrived there, and
-# `brews` has been soft-deprecated since. Unpinned like the baseline above,
-# because mise.lock already fixes whatever `latest` resolved to.
+# Release engineering — builds the artifacts and publishes the tap formula
+# (config in .goreleaser.yaml). Unpinned like the baseline above, because
+# mise.lock already fixes whatever `latest` resolved to.
 goreleaser = "latest"
 
 # Decides the next version, so that nothing has to infer one: `svu

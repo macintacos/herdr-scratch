@@ -49,8 +49,8 @@ keep no screen, so they can only hand back a bare prompt.`,
 		// has not refreshed can still be handing this a chord from an old one.
 		flagGiven := cmd.Flags().Changed("dismiss")
 		if flagGiven {
-			slog.Warn("--dismiss overrides dismiss in config.toml; upgrading installs this release's manifest, which passes no chord",
-				"chord", dismissChord)
+			slog.Warn("--dismiss overrides dismiss in config.toml; the chord comes from the manifest in this plugin root",
+				"chord", dismissChord, "root", root)
 		}
 		chord := scratch.DismissChord(dismissChord, flagGiven, cfg)
 

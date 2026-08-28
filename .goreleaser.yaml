@@ -64,9 +64,9 @@ brews:
   # Three measured facts hold this shape up, and each one closes a door:
   #
   #   - post_install re-runs on `brew upgrade`, not only on install. That is
-  #     what lets the copy below stand in for the link step an upgrade used to
-  #     need, and it is why the cask's post-install hook is gone rather than
-  #     ported.
+  #     what keeps the plugin root current without anything from the user, on
+  #     every release. Confirmed on both platforms before this block was
+  #     written.
   #   - post_install gets a throwaway $HOME on macOS — the install sandbox calls
   #     deny_read_home — so it can never register anything with herdr there. It
   #     reads a registry that does not exist and writes one that is deleted
@@ -117,7 +117,9 @@ brews:
     #
     # LICENSE lands in the keg rather than libexec: MIT requires the notice
     # travel with the binary, and libexec holds exactly the plugin root that
-    # post_install copies.
+    # post_install copies. README.md is the archive's fifth entry and is
+    # installed nowhere — it is there for somebody unpacking the tarball by
+    # hand, and herdr never reads it.
     install: |
       libexec.install "bin", "herdr-plugin.toml", "tmux.conf", "shell"
       bin.install_symlink libexec/"bin/herdr-scratch"
@@ -129,17 +131,28 @@ brews:
     #
     # Removing before the copy replaces rather than merges, so a file a release
     # stopped shipping does not linger in the root forever — herdr would keep
-    # finding it, and nothing else would remove it. Both calls raise on failure,
-    # which brew surfaces as "The post-install step did not complete
-    # successfully" rather than leaving a half-refreshed root behind quietly.
-    # `rm_r` guarded by exist? rather than the shorter rm_rf: `brew audit
-    # --strict` rejects rm_rf outright, and the guard keeps a genuine removal
-    # failure loud instead of swallowed.
+    # finding it, and nothing else would remove it. `rm_r` guarded by exist?
+    # rather than the shorter rm_rf: `brew audit --strict` rejects rm_rf
+    # outright, and the guard keeps a genuine removal failure loud instead of
+    # swallowed.
+    #
+    # `libexec.children` rather than the four names again: libexec holds exactly
+    # the plugin root, so the `install` stanza above stays the single place the
+    # layout is declared. Two lists that must match and nothing checking them is
+    # a silent failure — the archive and the keg would be right, `brew test`
+    # only reads --version, and the popup would break at the next keypress on a
+    # root missing tmux.conf or shell/.
+    #
+    # ponytail: not atomic — rm_r runs before the copy, so a copy that fails
+    # part-way leaves a destroyed root behind a keg brew still installs
+    # (formula_installer only opoos a failed post_install). `brew postinstall
+    # herdr-scratch` is the repair, which is cheaper than staging a whole tree
+    # to rename into place for a window this narrow.
     post_install: |
       root = HOMEBREW_PREFIX/"share/herdr-scratch"
       rm_r root if root.exist?
       root.mkpath
-      cp_r [libexec/"bin", libexec/"herdr-plugin.toml", libexec/"tmux.conf", libexec/"shell"], root
+      cp_r libexec.children, root
     # `brew audit --strict` refuses a formula with no test block, and this is
     # the assertion worth putting in it: "dev" means the ldflags stamp broke and
     # the release is misreporting its version to the one thing that reads it.

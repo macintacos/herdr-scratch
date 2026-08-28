@@ -4,7 +4,7 @@
 /bin/
 
 # Where goreleaser stages a build: the four archives, the checksums, and the
-# rendered cask. Rebuilt from scratch by every `--clean` run.
+# rendered formula. Rebuilt from scratch by every `--clean` run.
 /dist/
 
 # Per-machine Claude Code settings. .claude/skills/ is committed — the release

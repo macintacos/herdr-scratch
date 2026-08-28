@@ -13,16 +13,14 @@ version computed by [`svu`](https://github.com/caarlos0/svu) rather than typed, 
 notes drafted from the commit range — which is the usual way to cut one.
 
 > [!IMPORTANT]
-> **Once, at the first formula release — in this order.** goreleaser writes
-> `Formula/herdr-scratch.rb` into the tap and leaves `Casks/herdr-scratch.rb` exactly
-> where it is. Cut the release **first**, announce it, and only **then** delete the cask
-> from [macintacos/homebrew-tap](https://github.com/macintacos/homebrew-tap) by hand.
-> Deleting it earlier strands every existing user: a cask install runs `brew upgrade`
-> against a cask the tap no longer has. With both files present Homebrew resolves the bare
-> token to the **formula**, which is the wanted outcome for anyone installing fresh.
->
-> See § The cask cutover below for what an existing user has to do, and why `brew upgrade`
-> alone will not do it.
+> **Once, at the first formula release.** goreleaser writes `Formula/herdr-scratch.rb`
+> into the tap and leaves `Casks/herdr-scratch.rb` where it is. Delete the cask from
+> [macintacos/homebrew-tap](https://github.com/macintacos/homebrew-tap) by hand. It blocks
+> nothing — with both files present Homebrew resolves the bare token to the formula anyway
+> — so do it whenever, before or after.
+
+The version below is illustrative — `svu` computes the real one, and the `/release` skill
+is what runs it.
 
 ```sh
 $EDITOR herdr-plugin.toml                      # bump `version` to the tag you are cutting
@@ -70,12 +68,18 @@ brew tap-new local/rehearsal --no-git
 cp dist/homebrew/Formula/herdr-scratch.rb "$(brew --repository)/Library/Taps/local/homebrew-rehearsal/Formula/"
 brew style local/rehearsal/herdr-scratch
 brew audit --strict local/rehearsal/herdr-scratch
+brew untap local/rehearsal    # not optional; see below
 ```
 
 `brew audit --strict` is the one with opinions worth having: it rejects `rm_rf` in
 `post_install`, refuses a formula with no `test do`, and rejects a `livecheck` block
 placed after `depends_on` — which is where goreleaser's `custom_block` would put one, and
 why there is no `livecheck do skip` in the config.
+
+The untap is not tidiness either. A rehearsal tap left behind holds a second formula named
+`herdr-scratch`, and the next rehearsal's `brew style` then reports
+`Lint/DuplicateMethods` against the stale copy — spurious offences on the very check whose
+value is that it has opinions worth having.
 
 **Then check by hand what only a real install shows.** `test do` covers the version stamp,
 but `brew test` runs it only when asked:
@@ -102,45 +106,55 @@ check per release rather than an assumption.
 A formula download is **not** quarantined — Homebrew quarantines cask downloads only — so
 there is nothing to strip and nothing to check on a fresh machine.
 
-## The cask cutover
-
-One-time, at the first formula release. What was measured rather than assumed:
-
-- Installing the formula while the cask is still installed **succeeds but does not link**.
-  Homebrew unpacks the keg and prints `herdr-scratch cask is installed, skipping link`, so
-  the `herdr-scratch` on PATH is still the cask's. `brew test` then fails outright with
-  `is not linked`.
-- `brew uninstall --cask herdr-scratch` followed by `brew link herdr-scratch` completes
-  it, and `brew test` passes from there.
-- `brew upgrade` does **not** convert a cask install into a formula install.
-
-So the sequence an existing user runs is the one in the README's install section, and the
-announcement has to carry it — it cannot be discovered from `brew upgrade` output.
-
-Also one-time: `herdr-scratch link` is gone as of 0.7.0, so a user registered through it
-is pointed at `~/.local/share/herdr-scratch`, which nothing refreshes any more. Repointing
-herdr at `$(brew --prefix)/share/herdr-scratch` is part of the same cutover.
-
 ## The Linux check
 
-One-time, belonging to the cask→formula migration rather than to every release: the whole
-point of the formula is that Linux gets a brew path at all, so it is worth installing on
-Linux once from a container.
+One-time rather than per-release. The whole point of a formula over a cask is that Linux
+gets a brew path at all, and nothing on a macOS laptop exercises it — so it is worth
+installing on Linux once, from a container.
+
+Rewriting `url` / `sha256` to the local archive is the load-bearing step: without it
+`brew install` fetches the rendered GitHub URLs, which for a snapshot point at a release
+that does not exist, and the 404 does not look like a skipped step. So it lives in a
+script rather than a comment inside a `bash -c`, where nothing would perform it. Write
+`dist/linux-check.sh`:
 
 ```sh
-container run --rm --volume "$PWD/dist:/dist" homebrew/brew bash -c '
-  brew tap-new local/rehearsal --no-git &&
-  cp /dist/homebrew/Formula/herdr-scratch.rb "$(brew --repository)/Library/Taps/local/homebrew-rehearsal/Formula/" &&
-  # rewrite url to file:///dist/herdr-scratch_*_linux_<arch>.tar.gz and sha256 to match
-  brew install local/rehearsal/herdr-scratch'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$(uname -m)" in
+aarch64 | arm64) arch=arm64 ;;
+*) arch=amd64 ;;
+esac
+archive=$(ls /dist/herdr-scratch_*_linux_"$arch".tar.gz)
+sha=$(sha256sum "$archive" | cut -d' ' -f1)
+
+brew tap-new local/rehearsal --no-git
+tapdir="$(brew --repository)/Library/Taps/local/homebrew-rehearsal/Formula"
+cp /dist/homebrew/Formula/herdr-scratch.rb "$tapdir/"
+sed -i "s|url \".*\"|url \"file://$archive\"|g; s|sha256 \".*\"|sha256 \"$sha\"|g" \
+	"$tapdir/herdr-scratch.rb"
+
+brew install local/rehearsal/herdr-scratch
+brew info herdr | head -3                             # must say (bottled)
+ls -la "$(brew --prefix)/share/herdr-scratch"         # all four entries
+"$(brew --prefix)/share/herdr-scratch/bin/herdr-scratch" --version
+brew test local/rehearsal/herdr-scratch
 ```
 
-Two things to confirm: that `herdr` resolves to a **bottle** rather than a source build
-(`brew info herdr` says `(bottled)`), and that `post_install` populated
-`$(brew --prefix)/share/herdr-scratch` with all four entries. Match the archive to the
-container's architecture — apple/container runs an arm64 Linux VM on Apple silicon, and
-feeding it the amd64 tarball fails at `Exec format error` rather than anywhere
-informative.
+Then run it in the container, and delete it afterwards — `dist/` is gitignored, but the
+next `--clean` clears it regardless:
+
+```sh
+container run --rm --volume "$PWD/dist:/dist" homebrew/brew bash /dist/linux-check.sh
+rm dist/linux-check.sh
+```
+
+The arch detection is not padding: apple/container runs an **arm64** Linux VM on Apple
+silicon, so the amd64 tarball fails at `Exec format error` rather than anywhere
+informative. The two things this is here to confirm are in the script — that `herdr`
+resolves to a **bottle** rather than a source build, and that `post_install` populated the
+plugin root.
 
 `v0.5.0` is tagged but deliberately has no GitHub release: it predates this config, so
 goreleaser cannot build from it. The first published release is the next tag after it.

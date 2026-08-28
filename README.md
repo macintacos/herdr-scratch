@@ -28,24 +28,6 @@ tmux with it, and that is the whole dependency list.
 `herdr plugin link` is one-time. That path is refreshed on every upgrade, so from here on
 `brew upgrade` is the whole procedure.
 
-> [!IMPORTANT]
-> **Coming from the cask.** `brew upgrade` will not carry you across, and installing the
-> formula while the cask is still there leaves you on the cask: Homebrew unpacks the keg
-> but prints `herdr-scratch cask is installed, skipping link`, so the `herdr-scratch` on
-> your PATH does not change. Uninstall the cask first.
->
-> ```sh
-> brew uninstall --cask herdr-scratch
-> brew install macintacos/tap/herdr-scratch
-> herdr plugin link "$(brew --prefix)/share/herdr-scratch"
-> rm -rf ~/.local/share/herdr-scratch
-> ```
->
-> The `link` line is not optional. The cask registered `~/.local/share/herdr-scratch`, and
-> nothing refreshes that any more — `herdr-scratch link`, which used to write it, is gone
-> as of 0.7.0. Until you repoint herdr, the popup keeps running the build the cask left
-> there.
-
 > [!NOTE]
 > Upgrading pulls herdr up with it, and a herdr server already running will not match the
 > CLI it was just upgraded past. Restart herdr afterwards, or use
@@ -54,8 +36,9 @@ tmux with it, and that is the whole dependency list.
 <details>
 <summary>Installing without Homebrew</summary>
 
-Two of them, cheapest first. Both still want herdr 0.8.0+ (earlier versions have no
-`plugin pane` command) and tmux.
+Two paths, cheapest first. Both still want herdr 0.8.0+ (earlier versions have no
+`plugin pane` command) and tmux, and both build from source — the release archives exist
+for the formula to install from, not to unpack by hand.
 
 **Build from source.** Add Go 1.25+ to that dependency list; herdr compiles the binary for
 you as part of installing.
@@ -215,18 +198,21 @@ and `herdr server reload-config`.
 > build is herdr actually loading?
 >
 > ```sh
-> herdr plugin list | grep user.scratch    # the root herdr recorded
-> "$(brew --prefix)/share/herdr-scratch/bin/herdr-scratch" --version
+> herdr plugin list | grep user.scratch   # the root herdr recorded
+> "<that root>"/bin/herdr-scratch --version   # what the popup actually runs
+> herdr-scratch --version                     # what brew last installed
 > ```
 >
-> Ask the copy under the root herdr names, not the `herdr-scratch` on your PATH. On a
-> Homebrew install the two are refreshed together and always agree; a root herdr recorded
-> somewhere *else* is refreshed by nothing, and the gap is exactly what that looks like.
+> The first line tells you which path to substitute into the second — ask the copy under
+> the root herdr *names*, not a path you assumed. On a Homebrew install the two versions
+> are refreshed together and agree; a root herdr recorded somewhere else is refreshed by
+> nothing, and the gap between the two is exactly what that looks like.
 
 **The chord opens the popup but will not close it.** Almost always
 [`dismiss`](#configuring) not matching the chord you press. If you upgraded recently and
 herdr is registered against a root the upgrade did not refresh, it is still reading the
-old manifest — see the two entries below.
+old manifest — see *`herdr plugin list` shows a path with a version number in it* and
+*The popup runs a release you already upgraded past*, below.
 
 **The popup opens and closes immediately.** tmux failed to start, or the binary is
 missing. If you linked a local checkout, run `go build -o bin/herdr-scratch .` in it —
@@ -245,18 +231,15 @@ shells out to `terminal-notifier`, which hangs inside a popup and starves this o
 `functions -q __done_ended` inside the popup tells you whether it is loaded. To check
 delivery on its own, run `herdr notification show test --body test`.
 
-**`herdr plugin list` shows a path with a version number in it** — under `Cellar/` or
-`Caskroom/`. herdr was pointed at a keg directly, which pins it to a directory the next
-upgrade deletes. Point it at the root that survives instead:
+**The popup runs a release you already upgraded past**, or
+**`herdr plugin list` shows a path with a version number in it** (under `Cellar/`). Both
+are the same cause: herdr is registered against something other than the plugin root, so
+upgrading refreshes a directory nothing loads — or worse, one the next upgrade deletes.
+Point it back:
 
 ```sh
 herdr plugin link "$(brew --prefix)/share/herdr-scratch"
 ```
-
-**The popup runs a release you already upgraded past.** herdr is registered against a root
-that upgrading does not refresh. Most often `~/.local/share/herdr-scratch` — what the cask
-era's `herdr-scratch link` wrote, and what nothing maintains now that the command is gone.
-The same `herdr plugin link` above repoints it; delete the stale directory afterwards.
 
 **Nothing at all happens when you press it.** Read the log — keypresses have nowhere else
 to report:

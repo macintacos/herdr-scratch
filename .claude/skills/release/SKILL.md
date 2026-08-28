@@ -68,7 +68,7 @@ mise run goreleaser-check           # the config still validates
 git branch --show-current           # trunk
 git status --porcelain              # empty — including untracked files
 git fetch --prune --prune-tags origin && git rev-parse HEAD origin/trunk   # identical SHAs
-mise exec -- gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'
+mise exec -- gh api repos/macintacos/homebrew-tap/contents --jq '.[].name'
 ```
 
 - **goreleaser, svu or gh missing** → the tool is pinned in
@@ -95,26 +95,20 @@ mise exec -- gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'
   authenticated. If neither `$GITHUB_TOKEN` nor `mise exec -- gh auth token` yields one,
   stop and say exactly that — do not start a sequence that will fail at its last and least
   recoverable step.
-- **`herdr-scratch.rb` in that `Casks` listing** is **not** a stop, and deleting it before
-  releasing would be the mistake. goreleaser writes `Formula/herdr-scratch.rb` and leaves
-  the cask alone; while both exist Homebrew resolves the bare `herdr-scratch` token to the
-  **formula**, which is the wanted outcome. What the cask still buys is the existing
-  users: until the formula release is out and announced, `brew upgrade` on a cask install
-  has to find a cask in the tap. So:
+- **`Casks` in that listing** is **not** a stop. goreleaser writes
+  `Formula/herdr-scratch.rb` and leaves the leftover cask alone, and while both exist
+  Homebrew resolves the bare `herdr-scratch` token to the **formula** — the wanted
+  outcome. So the release is safe either way; mention the leftover in the run's closing
+  summary so the user can delete `Casks/herdr-scratch.rb` from the tap when convenient.
 
-  - **Present, and this is the first formula release** → expected. Release, announce, and
-    only then ask the user to delete `Casks/herdr-scratch.rb` by hand. Carry that into the
-    run's closing summary; it is the one step nothing else will remind them of.
-  - **Present, and a formula release has already shipped** → that deletion never happened.
-    Say so, and carry on: the formula still wins the bare token, so nothing about this
-    release is at risk.
-  - **Absent** → the cutover is complete; nothing to do.
-
-  The check lists the directory rather than probing the file for a `404` on purpose. A
-  missing file and an unreachable repository both come back `404` — so would a typo, an
-  expired token, or a renamed tap — and reading "error" as "the cutover is done" is a
-  silent wrong answer. The listing **succeeds** when the tap is reachable, so its output
-  is the assertion, and a non-zero exit means the check did not run.
+  The check lists the **tap root**, not `contents/Casks`, and that is load-bearing:
+  `herdr-scratch.rb` is the only file under `Casks/`, git does not track empty
+  directories, so deleting it deletes the directory and `contents/Casks` would 404 forever
+  afterwards. The root listing succeeds whenever the tap is reachable, before and after,
+  so its output is the assertion and a non-zero exit means the check did not run — which
+  is also why it lists rather than probing a filename, since a missing file, an
+  unreachable repository, a typo, an expired token and a renamed tap all come back `404`
+  alike.
 
 Then **ask the user to confirm the repo's checks were run** — `mise run preflight` covers
 lint and tests in one. Their word is the gate (Invariant 2). If they have not, stop and
@@ -286,8 +280,9 @@ entries under `$(brew --prefix)/share/herdr-scratch`, and the upgrade cycle. Poi
 user at it rather than restating it here; two copies of a checklist drift, and that one is
 what somebody reads without an agent in the room.
 
-If § Preconditions found `Casks/herdr-scratch.rb` still in the tap, this is where the user
-deletes it — after the release is out and announced, never before.
+If § Preconditions found `Casks/herdr-scratch.rb` still in the tap, remind the user to
+delete it. It blocks nothing — the formula wins the bare token regardless — so this is a
+line in the summary, not a step to wait on.
 
 ## When NOT to Use
 
@@ -297,9 +292,9 @@ deletes it — after the release is out and announced, never before.
   `goreleaser release --snapshot --clean --skip=publish` builds everything into `dist/`
   and touches nothing remote. No tag, no version, no gate — just run it.
 - **Fixing the tap.** Editing `macintacos/homebrew-tap` by hand is what the formula config
-  exists to end. Two exceptions, both named above: deleting the leftover **cask** once the
-  first formula release is announced (§ Preconditions, § After the release), and reverting
-  a formula commit for a version being abandoned rather than retried (§ Recovery).
+  exists to end. Two exceptions, both named above: deleting the leftover **cask** left
+  over from before the formula (§ Preconditions, § After the release), and reverting a
+  formula commit for a version being abandoned rather than retried (§ Recovery).
 
 ## Common Mistakes
 
@@ -313,7 +308,5 @@ deletes it — after the release is out and announced, never before.
 - **Running the repo's checks.** Invariant 2. Ask, don't run.
 - **Treating the gate as a formality.** It is the only point where the version and the
   notes can still be wrong for free.
-- **Deleting the tap's cask before the formula release is out.** The inverse of the old
-  mistake, and it strands exactly the people who already installed: between the deletion
-  and the release, `brew upgrade` on a cask install has no cask to find. Release first,
-  announce, then delete (§ After the release).
+- **Stopping on the leftover cask in the tap.** It is housekeeping, not a blocker —
+  Homebrew resolves the bare token to the formula while both exist (§ Preconditions).

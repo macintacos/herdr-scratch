@@ -22,6 +22,14 @@ set -euo pipefail
 # fails the gate, which is why the DEPRECATED lines are matched rather than
 # goreleaser's per-file verdict, whose wording names no property at all.
 # cmd/goreleaser_check_test.go holds this contract to the fixtures.
+#
+# The anchor is matched to the end of the property, not as a bare substring.
+# goreleaser builds it as `deprecations#` plus the property with its dots
+# stripped, so `brews.install` would render `deprecations#brewsinstall` — which
+# contains `deprecations#brews` and would be waved through by a substring test,
+# printing "tolerated" while forgiving something nobody decided to forgive.
+# That family is the likeliest next deprecation in a config that is nothing but
+# `brews`, and it would arrive on a goreleaser upgrade rather than an edit here.
 
 if output=$(goreleaser check "$@" 2>&1); then
 	printf '%s\n' "$output"
@@ -38,7 +46,7 @@ deprecations=$(grep 'DEPRECATED:' <<<"$output" || true)
 # Every verdict line is the deprecation verdict, and every deprecation named is
 # brews. Either list being empty means this is not the tolerated shape.
 if [ -n "$verdict" ] && ! grep -qv 'uses deprecated properties' <<<"$verdict" &&
-	[ -n "$deprecations" ] && ! grep -qv 'deprecations#brews' <<<"$deprecations"; then
+	[ -n "$deprecations" ] && ! grep -qvE 'deprecations#brews( |$)' <<<"$deprecations"; then
 	# Only the DEPRECATED lines, so a passing step does not print `⨯ check
 	# failed` and train a reader to skim past it.
 	printf '%s\n' "$deprecations"

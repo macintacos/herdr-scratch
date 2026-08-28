@@ -10,8 +10,10 @@ import "package://github.com/jdx/hk/releases/download/v1.56.0/hk@1.56.0#/Builtin
 //   mise run lint   -> the `check` hook -> `linters` (read-only rule checks)
 // The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
 //
-// Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
-// column-aligned on the bracket tag, so hk's per-run output reads consistently.
+// Step keys use a uniform `Scope(Action)  [[builtins.tool]]` scheme, column-
+// aligned on the bracket tag, so hk's per-run output reads consistently. Scope
+// is a language where one owns the step, and what the step is about otherwise —
+// Release(Lint) checks one file rather than a file type.
 
 // Formatters — rewrite files into canonical form.
 local formatters = new Mapping<String, Step> {
@@ -59,15 +61,9 @@ local linters = new Mapping<String, Step> {
 
   ["Go(Lint)          [[builtins.golangci_lint]]"] = Builtins.golangci_lint
 
-  // `goreleaser check` on its own exits non-zero on any deprecated property,
-  // and .goreleaser.yaml needs `brews` — deprecated since 2.16 — because it is
-  // the only block that publishes a Homebrew formula. The task tolerates that
-  // one deprecation and nothing else; cmd/goreleaser_check_test.go holds it to
-  // that.
-  //
-  // The task itself is in the glob for the same reason it is in Go(Test)'s:
-  // editing the tolerance logic is exactly the change that would otherwise not
-  // re-run the step written for it.
+  // Not bare `goreleaser check`: .goreleaser.yaml needs a deprecated property,
+  // and the task is what forgives exactly that one. Its own header carries the
+  // reasoning.
   ["Release(Lint)     [[goreleaser-check]]"] = new Step {
     glob = List(".goreleaser.yaml", ".mise/tasks/goreleaser-check")
     check = "./.mise/tasks/goreleaser-check .goreleaser.yaml"
@@ -88,11 +84,12 @@ hooks {
   // they gate the push instead.
   ["pre-push"] {
     steps = new Mapping<String, Step> {
-      // The goreleaser-check task is in the glob because cmd/goreleaser_check_test.go
-      // is written for it: editing the tolerance logic would otherwise not
-      // re-run the test that pins it.
+      // The two non-Go entries are what cmd/goreleaser_check_test.go reads:
+      // the task whose tolerance it pins, and the config it asserts still
+      // passes that task. Editing either is exactly the change that would
+      // otherwise not re-run the test written for it.
       ["Go(Test)          [[go test]]"] = new Step {
-        glob = List("**/*.go", ".mise/tasks/goreleaser-check")
+        glob = List("**/*.go", ".mise/tasks/goreleaser-check", ".goreleaser.yaml")
         workspace_indicator = "go.mod"
         check = "cd {{workspace}} && go test ./..."
       }
