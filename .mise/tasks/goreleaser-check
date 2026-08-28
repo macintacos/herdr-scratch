@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#MISE description="Validate .goreleaser.yaml, tolerating the brews deprecation"
+
+set -euo pipefail
+
+# What hk's Release(Lint) step and /release's preconditions run instead of
+# `goreleaser check` directly.
+#
+# The config publishes a Homebrew *formula*, which needs `brews`. goreleaser
+# deprecated `brews` in 2.16 in favour of `homebrew_casks` — macOS-only, so no
+# replacement for a formula that has to serve Linux too — and `check` exits
+# non-zero on any deprecated property with no flag to tolerate one. Left alone
+# the gate would be red forever, which is the same as having no gate. Only
+# `check` is this strict: `goreleaser release` warns and publishes, so nothing
+# about releasing is affected.
+#
+# Deprecated options are removed only on majors, so this expires at goreleaser
+# v3, where `brews` goes away with no formula path behind it. That is a rethink
+# of how this project ships, not a patch to this file.
+#
+# `brews` and nothing else is tolerated — a second deprecated property still
+# fails the gate, which is why the DEPRECATED lines are matched rather than
+# goreleaser's per-file verdict, whose wording names no property at all.
+# cmd/goreleaser_check_test.go holds this contract to the fixtures.
+
+if output=$(goreleaser check "$@" 2>&1); then
+	printf '%s\n' "$output"
+	exit 0
+fi
+
+# goreleaser reports one `error=` line per file it rejected plus a `check
+# failed` line counting them; the count is noise, the per-file lines are the
+# verdict. A config that does not parse at all fails as `command failed` with a
+# bare `error=`, which lands here as a line that is not the tolerated one.
+verdict=$(grep 'error=' <<<"$output" | grep -v 'check failed' || true)
+deprecations=$(grep 'DEPRECATED:' <<<"$output" || true)
+
+# Every verdict line is the deprecation verdict, and every deprecation named is
+# brews. Either list being empty means this is not the tolerated shape.
+if [ -n "$verdict" ] && ! grep -qv 'uses deprecated properties' <<<"$verdict" &&
+	[ -n "$deprecations" ] && ! grep -qv 'deprecations#brews' <<<"$deprecations"; then
+	# Only the DEPRECATED lines, so a passing step does not print `⨯ check
+	# failed` and train a reader to skim past it.
+	printf '%s\n' "$deprecations"
+	echo "goreleaser-check: brews is the only deprecation; tolerated"
+	exit 0
+fi
+
+printf '%s\n' "$output" >&2
+exit 1

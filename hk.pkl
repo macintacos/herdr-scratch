@@ -58,6 +58,20 @@ local linters = new Mapping<String, Step> {
   ["Pkl(Lint)         [[builtins.pkl]]"] = Builtins.pkl
 
   ["Go(Lint)          [[builtins.golangci_lint]]"] = Builtins.golangci_lint
+
+  // `goreleaser check` on its own exits non-zero on any deprecated property,
+  // and .goreleaser.yaml needs `brews` — deprecated since 2.16 — because it is
+  // the only block that publishes a Homebrew formula. The task tolerates that
+  // one deprecation and nothing else; cmd/goreleaser_check_test.go holds it to
+  // that.
+  //
+  // The task itself is in the glob for the same reason it is in Go(Test)'s:
+  // editing the tolerance logic is exactly the change that would otherwise not
+  // re-run the step written for it.
+  ["Release(Lint)     [[goreleaser-check]]"] = new Step {
+    glob = List(".goreleaser.yaml", ".mise/tasks/goreleaser-check")
+    check = "./.mise/tasks/goreleaser-check .goreleaser.yaml"
+  }
 }
 
 hooks {
@@ -74,8 +88,11 @@ hooks {
   // they gate the push instead.
   ["pre-push"] {
     steps = new Mapping<String, Step> {
+      // The goreleaser-check task is in the glob because cmd/goreleaser_check_test.go
+      // is written for it: editing the tolerance logic would otherwise not
+      // re-run the test that pins it.
       ["Go(Test)          [[go test]]"] = new Step {
-        glob = "**/*.go"
+        glob = List("**/*.go", ".mise/tasks/goreleaser-check")
         workspace_indicator = "go.mod"
         check = "cd {{workspace}} && go test ./..."
       }
