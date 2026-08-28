@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
-	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
@@ -49,8 +48,8 @@ func DefaultConfig() Config {
 //
 // herdr sets HERDR_PLUGIN_CONFIG_DIR on every plugin command, so the popup and
 // the toggle never have to work the path out. The two XDG tiers below it are
-// for the invocations herdr is not making — `link`, and a binary run by hand —
-// which still have to name the same file.
+// for the invocations herdr is not making — a binary run by hand — which still
+// have to name the same file.
 //
 // lookup is the environment reader and home the fallback base, both injected so
 // this stays testable.
@@ -153,43 +152,6 @@ func validPopupSize(size string) bool {
 	return err == nil && cells >= 0 && cells <= 65535
 }
 
-// ManifestSettings reads the settings out of a manifest that is about to be
-// replaced, so `link` can tell the user which config.toml lines carry them
-// over.
-//
-// The manifest is where these lived before config.toml existed, and every
-// release now writes a new one over the top of it — so the only chance to
-// notice what was in there is the moment before it goes.
-//
-// A manifest this cannot read reports the zero Config rather than an error:
-// nothing to migrate beats a wrong migration notice, since the file is being
-// overwritten either way and a guessed line is one the user would paste.
-func ManifestSettings(data []byte) Config {
-	k := koanf.New(".")
-	if err := k.Load(rawbytes.Provider(data), toml.Parser()); err != nil {
-		return Config{}
-	}
-
-	// The pane herdr opens is the only place a manifest carries user settings:
-	// the size on the entry itself, the dismiss chord inside the command it
-	// runs. There is exactly one pane, so the first one is it.
-	var panes []struct {
-		Width   string   `koanf:"width"`
-		Height  string   `koanf:"height"`
-		Command []string `koanf:"command"`
-	}
-	if err := k.Unmarshal("panes", &panes); err != nil || len(panes) == 0 {
-		return Config{}
-	}
-
-	cfg := Config{Width: panes[0].Width, Height: panes[0].Height}
-	if m := dismissArg.FindStringSubmatch(strings.Join(panes[0].Command, " ")); m != nil {
-		// Whichever quoting matched holds the chord; the other group is empty.
-		cfg.Dismiss = m[1] + m[2]
-	}
-	return cfg
-}
-
 // DismissChord picks the chord to bind: the flag when it was given, then the
 // config file, then the built-in default.
 //
@@ -226,34 +188,3 @@ func SizeArgs(cfg Config) []string {
 	}
 	return args
 }
-
-// MigratedSettings names the settings a manifest being replaced carried that
-// would not survive it, spelled as the config.toml lines that carry them over.
-//
-// Each is measured against what will be in force once the shipped manifest is
-// in place: that manifest's own size, and — since it names no chord at all —
-// the built-in default chord. Measuring the chord against the shipped manifest
-// instead would report every untouched install, whose "C-b '" is the same
-// chord it is about to get anyway.
-//
-// Only a value the user actually typed counts: an empty one is a setting that
-// manifest never had, not one to move.
-func MigratedSettings(had, shipped Config) []string {
-	var lines []string
-	for _, setting := range []struct{ key, was, now string }{
-		{"dismiss", had.Dismiss, DefaultConfig().Dismiss},
-		{"width", had.Width, shipped.Width},
-		{"height", had.Height, shipped.Height},
-	} {
-		if setting.was != "" && setting.was != setting.now {
-			lines = append(lines, fmt.Sprintf("%s = %q", setting.key, setting.was))
-		}
-	}
-	return lines
-}
-
-// dismissArg picks the chord out of the shell string a pane command runs.
-//
-// A chord is two keys with a space between them, so the line has to quote it —
-// either way round, because a hand-edited manifest is exactly what this reads.
-var dismissArg = regexp.MustCompile(`--dismiss[= ]+(?:"([^"]*)"|'([^']*)')`)

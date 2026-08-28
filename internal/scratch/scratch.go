@@ -128,27 +128,15 @@ func DetachArgs(session string) []string {
 	return []string{"detach-client", "-s", session}
 }
 
-// StableRoot is the directory herdr is pointed at: one this plugin owns, which
-// no upgrade renumbers.
-//
-// lookup is the environment reader and home the fallback base, both injected so
-// this stays testable.
-func StableRoot(lookup func(string) string, home string) string {
-	if data := lookup("XDG_DATA_HOME"); data != "" {
-		return filepath.Join(data, "herdr-scratch")
-	}
-	return filepath.Join(home, ".local", "share", "herdr-scratch")
-}
-
 // LogPath is the file every subcommand logs to.
 //
 // These run from keypresses and prompt hooks, where stderr goes nowhere anyone
 // can read, so a file is the only place a record survives. State rather than
-// data, hence .local/state and not the .local/share that StableRoot uses.
+// data, hence .local/state.
 //
 // HERDR_PLUGIN_STATE_DIR is herdr's answer to the same question, already scoped
 // to this plugin, so the log goes straight into it. The XDG tiers below it stay
-// for the invocations herdr is not making — `link`, and a binary run by hand.
+// for the invocations herdr is not making — a binary run by hand.
 //
 // lookup is the environment reader and home the fallback base, both injected so
 // this stays testable.

@@ -45,11 +45,11 @@ keep no screen, so they can only hand back a bare prompt.`,
 		// A manifest written before the settings moved still passes --dismiss,
 		// and a flag that was given beats the file. Said out loud because the
 		// symptom otherwise is a config.toml edit that does nothing: herdr
-		// keeps the manifest it recorded until `link` replaces it, so an
-		// upgraded binary can still be reading a chord from an old one.
+		// reads the manifest sitting in the plugin root, so a root an upgrade
+		// has not refreshed can still be handing this a chord from an old one.
 		flagGiven := cmd.Flags().Changed("dismiss")
 		if flagGiven {
-			slog.Warn("--dismiss overrides dismiss in config.toml; re-run `herdr-scratch link` to install this release's manifest",
+			slog.Warn("--dismiss overrides dismiss in config.toml; upgrading installs this release's manifest, which passes no chord",
 				"chord", dismissChord)
 		}
 		chord := scratch.DismissChord(dismissChord, flagGiven, cfg)

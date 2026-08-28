@@ -1,7 +1,6 @@
 package scratch
 
 import (
-	"os"
 	"reflect"
 	"testing"
 )
@@ -135,23 +134,6 @@ func TestDetachArgsTargetsTheSessionNotTheCurrentClient(t *testing.T) {
 	}
 }
 
-func TestStableRootPrefersXDGDataHome(t *testing.T) {
-	env := map[string]string{"XDG_DATA_HOME": "/xdg"}
-	got := StableRoot(func(k string) string { return env[k] }, "/home/me")
-	if want := "/xdg/herdr-scratch"; got != want {
-		t.Errorf("StableRoot() = %q, want %q", got, want)
-	}
-}
-
-func TestStableRootFallsBackToTheXDGDefault(t *testing.T) {
-	// XDG_DATA_HOME is unset far more often than not, and the directory has to
-	// land somewhere predictable either way — herdr records it permanently.
-	got := StableRoot(func(string) string { return "" }, "/home/me")
-	if want := "/home/me/.local/share/herdr-scratch"; got != want {
-		t.Errorf("StableRoot() = %q, want %q", got, want)
-	}
-}
-
 func TestLogPathPrefersXDGStateHome(t *testing.T) {
 	env := map[string]string{"XDG_STATE_HOME": "/xdg"}
 	got := LogPath(func(k string) string { return env[k] }, "/home/me")
@@ -161,8 +143,8 @@ func TestLogPathPrefersXDGStateHome(t *testing.T) {
 }
 
 func TestLogPathFallsBackToTheXDGDefault(t *testing.T) {
-	// A log is state rather than data, so it belongs under .local/state — not
-	// beside the plugin directory StableRoot builds under .local/share.
+	// A log is state rather than data, so it belongs under .local/state rather
+	// than .local/share.
 	got := LogPath(func(string) string { return "" }, "/home/me")
 	if want := "/home/me/.local/state/herdr-scratch/herdr-scratch.log"; got != want {
 		t.Errorf("LogPath() = %q, want %q", got, want)
@@ -431,8 +413,8 @@ func TestConfigPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
 }
 
 func TestConfigPathFallsBackToXDGConfigHome(t *testing.T) {
-	// `herdr-scratch link` and a binary run by hand get none of the HERDR_
-	// variables, and still have to name the same file the popup will read.
+	// A binary run by hand gets none of the HERDR_ variables, and still has to
+	// name the same file the popup will read.
 	env := map[string]string{"XDG_CONFIG_HOME": "/xdg"}
 	got := ConfigPath(func(k string) string { return env[k] }, "/home/me")
 	if want := "/xdg/herdr/plugins/config/user.scratch/config.toml"; got != want {
@@ -454,69 +436,6 @@ func TestLogPathPrefersTheDirectoryHerdrInjects(t *testing.T) {
 	got := LogPath(func(k string) string { return env[k] }, "/home/me")
 	if want := "/herdr/state/user.scratch/herdr-scratch.log"; got != want {
 		t.Errorf("LogPath() = %q, want %q", got, want)
-	}
-}
-
-func TestManifestSettingsReadsTheSizeOffTheShippedManifest(t *testing.T) {
-	// The manifest link is about to replace is the one the user may have edited,
-	// and the shipped file is the yardstick it gets compared against — so the
-	// real thing, not a fixture, has to be readable by this.
-	data, err := os.ReadFile("../../herdr-plugin.toml")
-	if err != nil {
-		t.Fatalf("reading the shipped manifest: %v", err)
-	}
-	got := ManifestSettings(data)
-	want := Config{Width: "70%", Height: "70%"}
-	if got != want {
-		t.Errorf("ManifestSettings(shipped) = %#v, want %#v", got, want)
-	}
-}
-
-func TestManifestSettingsReadsTheChordOutOfThePaneCommand(t *testing.T) {
-	// The chord was never a key of its own: it was a --dismiss flag inside the
-	// pane's shell string, quoted because it is two keys with a space between
-	// them. That is the spelling every manifest written before config.toml has.
-	data := []byte(`
-[[panes]]
-id      = "scratch"
-width   = "80%"
-height  = "50%"
-command = ["/bin/sh", "-c", "exec \"$HERDR_PLUGIN_ROOT/bin/herdr-scratch\" popup --dismiss \"C-b '\""]
-`)
-	got := ManifestSettings(data)
-	want := Config{Dismiss: "C-b '", Width: "80%", Height: "50%"}
-	if got != want {
-		t.Errorf("ManifestSettings() = %#v, want %#v", got, want)
-	}
-}
-
-func TestManifestSettingsReadsAChordQuotedTheOtherWay(t *testing.T) {
-	// A hand-edited manifest is exactly what this reads, and nothing made
-	// anyone spell the flag the way the shipped file did.
-	data := []byte(`
-[[panes]]
-id      = "scratch"
-command = ["/bin/sh", "-c", "exec herdr-scratch popup --dismiss='C-a ;'"]
-`)
-	if got := ManifestSettings(data); got.Dismiss != "C-a ;" {
-		t.Errorf("ManifestSettings() Dismiss = %q, want %q", got.Dismiss, "C-a ;")
-	}
-}
-
-func TestManifestSettingsIgnoresAManifestItCannotParse(t *testing.T) {
-	// Nothing to migrate is a better answer than a wrong migration notice: the
-	// manifest is being overwritten either way, and a guess printed as a config
-	// line is one the user would paste.
-	if got := ManifestSettings([]byte("[[panes\n")); got != (Config{}) {
-		t.Errorf("ManifestSettings(garbage) = %#v, want the zero Config", got)
-	}
-}
-
-func TestManifestSettingsReportsNothingForAManifestWithNoPane(t *testing.T) {
-	// Valid TOML carrying none of the settings this looks for — an old manifest
-	// trimmed down, or a file that is not a manifest at all.
-	if got := ManifestSettings([]byte("id = \"user.scratch\"\n")); got != (Config{}) {
-		t.Errorf("ManifestSettings() = %#v, want the zero Config", got)
 	}
 }
 
@@ -561,37 +480,5 @@ func TestSizeArgsSendsOnlyTheDimensionThatWasSet(t *testing.T) {
 	want := []string{"--height", "40%"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("SizeArgs() = %#v, want %#v", got, want)
-	}
-}
-
-func TestMigratedSettingsSaysNothingAboutAnUntouchedManifest(t *testing.T) {
-	// The common upgrade, and the one that must stay quiet: a manifest nobody
-	// edited names the same chord and the same size the plugin is about to use
-	// anyway. The chord is the trap — the shipped manifest no longer carries
-	// one, so comparing the two files directly reports every install there is.
-	had := Config{Dismiss: "C-b '", Width: "70%", Height: "70%"}
-	shipped := Config{Width: "70%", Height: "70%"}
-	if got := MigratedSettings(had, shipped); got != nil {
-		t.Errorf("MigratedSettings(untouched) = %#v, want nothing to carry over", got)
-	}
-}
-
-func TestMigratedSettingsNamesWhatTheUserChanged(t *testing.T) {
-	had := Config{Dismiss: "C-a ;", Width: "90%", Height: "70%"}
-	shipped := Config{Width: "70%", Height: "70%"}
-	got := MigratedSettings(had, shipped)
-	want := []string{`dismiss = "C-a ;"`, `width = "90%"`}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("MigratedSettings() = %#v, want %#v", got, want)
-	}
-}
-
-func TestMigratedSettingsSaysNothingWhenThereWasNoManifest(t *testing.T) {
-	// A first install: nothing was in place, so ManifestSettings reported the
-	// zero Config. An empty value is a setting that manifest never had — not a
-	// setting to move, and certainly not `width = ""`.
-	shipped := Config{Width: "70%", Height: "70%"}
-	if got := MigratedSettings(Config{}, shipped); got != nil {
-		t.Errorf("MigratedSettings(nothing) = %#v, want nothing to carry over", got)
 	}
 }
