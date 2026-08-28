@@ -7,7 +7,7 @@ argument-hint: patch | minor | major
 # Release
 
 Take a bump word and turn it into a published release: a GitHub release with checksums and
-notes, and a Homebrew cask in
+notes, and a Homebrew formula in
 [macintacos/homebrew-tap](https://github.com/macintacos/homebrew-tap) pointing at it.
 
 The version is **derived** from the last tag by `svu`, never chosen. That is the whole
@@ -27,7 +27,7 @@ The user invoked: `/release $ARGUMENTS`. `$ARGUMENTS` is exactly one bump word, 
 | `<bump>` | Example, from `v0.5.0` | Use when |
 | -------- | ---------------------- | -------- |
 | `patch`  | `v0.5.1`               | Fixes only; nothing a user has to do anything about. |
-| `minor`  | `v0.6.0`               | New behaviour, or a change to what `link` / the popup does. |
+| `minor`  | `v0.6.0`               | New behaviour, or a change to what the popup does. |
 | `major`  | `v1.0.0`               | A break — the manifest, the plugin root layout, or a removed command. |
 
 The examples are illustrative — `v0.5.0` is whatever `svu current` reports at the time,
@@ -64,17 +64,21 @@ one that only looks like it did.
 ```sh
 mise exec -- goreleaser --version   # installed via mise.toml
 mise exec -- svu --version          # same
-mise exec -- goreleaser check       # the config still validates
+mise run goreleaser-check           # the config still validates
 git branch --show-current           # trunk
 git status --porcelain              # empty — including untracked files
 git fetch --prune --prune-tags origin && git rev-parse HEAD origin/trunk   # identical SHAs
-mise exec -- gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].name'
+mise exec -- gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'
 ```
 
 - **goreleaser, svu or gh missing** → the tool is pinned in
   [mise.toml](../../../mise.toml), so this means mise has not installed it. Say
   `mise install` and stop; do not fall back to a system copy, which is not the pinned
   version.
+- **`mise run goreleaser-check`, not bare `goreleaser check`.** The config needs `brews` —
+  the only block that publishes a formula — which goreleaser deprecated in 2.16, and
+  `check` exits non-zero on any deprecated property with no flag to tolerate one. The task
+  forgives that one and nothing else, so a *second* deprecation still stops the release.
 - **Not on `trunk`, dirty, or ahead of / behind `origin/trunk`** → stop. A release is cut
   from the default branch's tip; a tag on anything else points at a tree nobody reviewed.
   *Dirty* means what goreleaser means by it: `git status --porcelain` empty,
@@ -87,22 +91,30 @@ mise exec -- gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].nam
   `origin/trunk`, so there is no legitimate unpushed local tag to lose.
 - **The token.** goreleaser reads `GITHUB_TOKEN` and it needs contents write on **both**
   `macintacos/herdr-scratch` (to create the release) and `macintacos/homebrew-tap` (to
-  commit the cask). `$(mise exec -- gh auth token)` covers it when `gh` is authenticated.
-  If neither `$GITHUB_TOKEN` nor `mise exec -- gh auth token` yields one, stop and say
-  exactly that — do not start a sequence that will fail at its last and least recoverable
-  step.
-- **`herdr-scratch.rb` appears in that `Formula` listing** → **stop.** goreleaser writes
-  `Casks/herdr-scratch.rb` and leaves the formula alone, and while both exist Homebrew
-  resolves the bare `herdr-scratch` token to the **formula** and keeps building from
-  source. The release would publish, the cask would be committed, and nobody would receive
-  either. Deleting it is a manual step in the tap repo; ask the user to do it and stop.
+  commit the formula). `$(mise exec -- gh auth token)` covers it when `gh` is
+  authenticated. If neither `$GITHUB_TOKEN` nor `mise exec -- gh auth token` yields one,
+  stop and say exactly that — do not start a sequence that will fail at its last and least
+  recoverable step.
+- **`herdr-scratch.rb` in that `Casks` listing** is **not** a stop, and deleting it before
+  releasing would be the mistake. goreleaser writes `Formula/herdr-scratch.rb` and leaves
+  the cask alone; while both exist Homebrew resolves the bare `herdr-scratch` token to the
+  **formula**, which is the wanted outcome. What the cask still buys is the existing
+  users: until the formula release is out and announced, `brew upgrade` on a cask install
+  has to find a cask in the tap. So:
+
+  - **Present, and this is the first formula release** → expected. Release, announce, and
+    only then ask the user to delete `Casks/herdr-scratch.rb` by hand. Carry that into the
+    run's closing summary; it is the one step nothing else will remind them of.
+  - **Present, and a formula release has already shipped** → that deletion never happened.
+    Say so, and carry on: the formula still wins the bare token, so nothing about this
+    release is at risk.
+  - **Absent** → the cutover is complete; nothing to do.
 
   The check lists the directory rather than probing the file for a `404` on purpose. A
   missing file and an unreachable repository both come back `404` — so would a typo, an
-  expired token, or a renamed tap — and reading "error" as "pass" is the worst possible
-  failure on the one precondition that decides whether anyone receives the release. The
-  listing **succeeds** when the tap is reachable, so its output is the assertion: the name
-  present means stop, absent means pass, and a non-zero exit means the check did not run.
+  expired token, or a renamed tap — and reading "error" as "the cutover is done" is a
+  silent wrong answer. The listing **succeeds** when the tap is reachable, so its output
+  is the assertion, and a non-zero exit means the check did not run.
 
 Then **ask the user to confirm the repo's checks were run** — `mise run preflight` covers
 lint and tests in one. Their word is the gate (Invariant 2). If they have not, stop and
@@ -151,12 +163,12 @@ the whole body of the GitHub release. Write it for somebody deciding whether to 
 not for somebody reading `git log`:
 
 - Lead with what changed for a user of the popup or the CLI. A commit that renamed an
-  internal helper does not earn a line; one that changed what `herdr-scratch link` does
-  earns the first one.
+  internal helper does not earn a line; one that changed how the plugin is installed or
+  registered earns the first one.
 - Group related commits into one entry rather than transcribing each. Seven commits are
   often three changes.
-- Call out anything requiring action — a re-`link` after upgrading, a config change, a
-  removed flag — under its own heading. This is the part people actually need.
+- Call out anything requiring action — a re-`herdr plugin link`, a config change, a
+  removed command — under its own heading. This is the part people actually need.
 - Keep the conventional-commit prefixes out of the prose; they are metadata, not English.
 
 ## The gate
@@ -203,7 +215,7 @@ git status --porcelain
 # 6. The tag. Everything before this is local and freely undone; this is not.
 git tag -a <tag> -m <tag> && git push origin <tag>
 
-# 7. Build, publish the release, commit the cask.
+# 7. Build, publish the release, commit the formula.
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(mise exec -- gh auth token)}" \
   mise exec -- goreleaser release \
   --clean --release-notes <notes>
@@ -239,7 +251,7 @@ deletion there errors on a ref that never existed. Check with
 | Bump commit pushed, no tag (step 4) | Ordinary git. Fix forward with another commit, or revert it. Nothing references it yet. |
 | Local tag only (step 6's `git tag` ran, its push did not) | `git tag -d <tag>`, fix the cause, retry step 6. Nothing is public. Note the repo's `pre-push` hook runs `go test ./...`, so a red suite is a likely cause. |
 | **Tag pushed**, no release (step 7 failed early) | `git push --delete origin <tag>` then `git tag -d <tag>`, in that order. Leave the bump commit — it is correct and the retry needs it. |
-| Tag pushed, release and/or cask created (step 7 failed late) | Below. |
+| Tag pushed, release and/or formula created (step 7 failed late) | Below. |
 
 A failure partway through `goreleaser release` is the one worth spelling out, because it
 can leave three things behind and they must come off in order:
@@ -251,15 +263,15 @@ git tag -d <tag>                             # then the local one
 ```
 
 Check the tap as well —
-`mise exec -- gh api repos/macintacos/homebrew-tap/contents/Casks --jq '.[].name'`,
+`mise exec -- gh api repos/macintacos/homebrew-tap/contents/Formula --jq '.[].name'`,
 listing the directory rather than probing the file for the same reason § Preconditions
-does. If goreleaser committed the cask before failing, it now points at a release that
-does not exist and `brew install --cask` will 404 for anyone who tries.
+does. If goreleaser committed the formula before failing, it now points at a release that
+does not exist and `brew install` will 404 for anyone who tries.
 
 **Retrying the same version needs no tap edit** — the next run rewrites
-`Casks/herdr-scratch.rb` from scratch. Reverting that commit by hand is only for a version
-being *abandoned* rather than retried, and it is the one case § When NOT to Use's "don't
-hand-edit the tap" gives way to.
+`Formula/herdr-scratch.rb` from scratch. Reverting that commit by hand is only for a
+version being *abandoned* rather than retried, and it is the one case § When NOT to Use's
+"don't hand-edit the tap" gives way to.
 
 **Never leave a pushed tag with no release behind it.** It is the one failure mode that
 misleads silently: `svu` computes the *next* version from the newest tag, so an abandoned
@@ -268,11 +280,14 @@ the repo like a version that shipped.
 
 ## After the release
 
-The checks a cask cannot make for itself are in
-[docs/RELEASING.md](../../../docs/RELEASING.md) — `brew install --cask`, `--version`
-(which must report the tag, not `dev`), `link` exiting 0, and the upgrade cycle. Point the
+The by-hand checks are in [docs/RELEASING.md](../../../docs/RELEASING.md) —
+`brew install`, `brew test`, `--version` (which must report the tag, not `dev`), the four
+entries under `$(brew --prefix)/share/herdr-scratch`, and the upgrade cycle. Point the
 user at it rather than restating it here; two copies of a checklist drift, and that one is
 what somebody reads without an agent in the room.
+
+If § Preconditions found `Casks/herdr-scratch.rb` still in the tap, this is where the user
+deletes it — after the release is out and announced, never before.
 
 ## When NOT to Use
 
@@ -281,10 +296,10 @@ what somebody reads without an agent in the room.
 - **Rehearsing the release machinery.**
   `goreleaser release --snapshot --clean --skip=publish` builds everything into `dist/`
   and touches nothing remote. No tag, no version, no gate — just run it.
-- **Fixing the tap.** Editing `macintacos/homebrew-tap` by hand is what the cask config
-  exists to end. Two exceptions, both named above: deleting the leftover formula (§
-  Preconditions), and reverting a cask commit for a version being abandoned rather than
-  retried (§ Recovery).
+- **Fixing the tap.** Editing `macintacos/homebrew-tap` by hand is what the formula config
+  exists to end. Two exceptions, both named above: deleting the leftover **cask** once the
+  first formula release is announced (§ Preconditions, § After the release), and reverting
+  a formula commit for a version being abandoned rather than retried (§ Recovery).
 
 ## Common Mistakes
 
@@ -298,6 +313,7 @@ what somebody reads without an agent in the room.
 - **Running the repo's checks.** Invariant 2. Ask, don't run.
 - **Treating the gate as a formality.** It is the only point where the version and the
   notes can still be wrong for free.
-- **Releasing while the tap still has the formula.** The most expensive mistake here,
-  because everything reports success — the release exists, the cask is committed, and
-  `brew install herdr-scratch` still compiles from source.
+- **Deleting the tap's cask before the formula release is out.** The inverse of the old
+  mistake, and it strands exactly the people who already installed: between the deletion
+  and the release, `brew upgrade` on a cask install has no cask to find. Release first,
+  announce, then delete (§ After the release).
